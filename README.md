@@ -1,2 +1,2 @@
 # UBER
-Analysis of weekly stats for a random driver
+Analysis of weekly trips statistics of a random driver
