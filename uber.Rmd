@@ -21,7 +21,9 @@ We have a data set covering 43 consequtive weeks of driving history - a sample w
 1. Import and clean data
 2. Calculate the descriptive statistics, build the distribution plot
 3. Calculate confidence interval
-4. Find min and max number of weeks to reach the perk
+4. Find min and max number of weeks to reach the perk  
+
+5. More research questions
 
 #### Import and clean data
 
@@ -30,6 +32,13 @@ library(dplyr)
 library(ggplot2)
 library(readxl)
 library(readr)
+
+# plyr is handy for multiple cvs import 
+library(plyr)
+
+# package lubridate for easy date/time handling
+install.packages("lubridate")
+library(lubridate)
 ```
 
 We have already imported the data from Excel file and saved as uber_stats.Rdata file.
@@ -93,3 +102,103 @@ remaining_weeks_max <- round((3000 - 2091) / ci_trips$lower, 1)
 ```
 
 Considering that the rider already made 2091 trips, it will take this driver at least `r remaining_weeks_min` weeks and at most `r remaining_weeks_max` weeks to reach 3000 trips.
+
+
+## More research questions
+
+### On which day of the week riders tip most frequently?
+
+That would be great to know if there's any correlation between the day of the week and tip amount and frequency a driver gets. For this analysis, we need to get a data set with separate trips (not just weekly data we used before).  
+
+
+#### Getting data from multiple csvs
+
+We have a raw data in Uber weekly statements that we want to put into one data set. 
+
+```{r multiple_csv error=FALSE, warning=FALSE, message=FALSE, collapse=TRUE}
+
+# We first put all csvs into dedicated folder. Then, we create a list of all files in csv folder.
+
+mydir = "csv"
+myfiles = list.files(path=mydir, pattern="*.csv", full.names=TRUE)
+
+# We use ldply function from plyr library to build a data frame from multiple csv files using read_csv function from readr library.
+
+uber_trips = ldply(myfiles, read_csv)
+```
+
+Fortunately, raw data already show a day of the week for each trip, so we don't need to take extra steps to transform date into days of the week. However, we would need to split the 'Date/Time' parameter into 'Date/Time' and 'Weekday'.
+
+```{r date_time_separation}
+# create new column, convert Date/Time data in a proper format then extract the week day
+
+uber_trips <- uber_trips %>%
+  mutate(date_time = as.POSIXct(strptime(uber_trips$`Date/Time`, format = "%A, %B %d, %Y %I:%M %p"))) %>%
+  # assign week day: time after midnight (till 5 am) considered a previous day since the shift isn't over 
+  mutate(week_day = ifelse(hour(date_time) > 5, weekdays(date_time, abbreviate = TRUE), (weekdays(as.Date(date_time)-1, abbreviate = TRUE))))
+```
+
+*Please, note that driver's shift often spans from evening to late night. Thus, for this particular analysis we don't switch the day right after midnight and we keep the same day until 5am in the morning. This way a tip recieved on a Sunday's late night ride considered a Sunday's tip, not Monday's which makes sense.*   
+
+All currency columns need to be converted into numerical format.
+
+```{r change_formats}
+# create a function which converts char variable into currency variable
+currency <- function(x, na.rm = TRUE) (as.numeric(sub('$','',as.character(x),fixed=TRUE)))
+
+# create a list of all columns to be converted
+char_list <- colnames(select_if(uber_trips, is.character))
+                      
+# exclude all non-currency columns
+char_list = char_list[- c(1, 2, 3, 4, 5, 20)]
+char_list[15] = "Promotions"
+char_list[16] = "Cleaning Repairs"
+  
+# change the format for currency columns. We use new data frame to avoid any data loss
+uber_trips_clean <- uber_trips %>%
+  mutate_at(char_list, currency, na.rm = TRUE)
+```
+
+
+#### Summary statistics
+
+Chack summary statistics and parameter distributions.
+
+```{r summary_statistics}
+# Summary stats for Tip variable
+uber_trips_clean %>% 
+  filter(!is.na(Tip)) %>%
+  summarise(tip_mean = mean(as.numeric(Tip,  na.rm = TRUE)), tip_min = min(as.numeric(Tip)), tip_max = max(as.numeric(Tip,  na.rm = TRUE)), tip_sd = sd(as.numeric(Tip))) %>%
+  show()
+
+uber_trips_clean %>%
+  filter(!is.na(Tip)) %>%
+  ggplot(aes(x = Tip)) +
+  geom_histogram(binwidth = 3) 
+```
+
+'Tip' variable represent a right-skewed unimodal distribution with several extreme outliers (more than 3 standard deviations from the mean).
+
+#### Find dyas when tips received most frequently
+
+```{r}
+# Build a frequency plot
+uber_trips_clean %>%
+  filter(!is.na(Tip)) %>%
+  ggplot(aes(y = Tip, x = week_day)) +
+  geom_bin2d()
+
+# Number of trips with tip and trips per week day
+days_stat <- uber_trips_clean %>%
+  group_by(week_day) %>%
+  summarise(trips_w_tip = sum(!is.na(Tip)), trips_total = n(), proportion = trips_w_tip/trips_total)
+
+days_stat
+
+```
+
+#### ANOVA hypothesis test
+
+It's interesting to check whether the differencies in frequencies are due to chance or not. We'll be using ANOVA test to find out.
+
+
