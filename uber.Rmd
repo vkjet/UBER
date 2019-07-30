@@ -14,7 +14,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 UBER has introduced the new perks for its drivers recently. One of the perks is the full tuition for the ASU online. Driver needs to make 3000 trips to be able t claim this particular perk. I have a data of a driver who has been driving for 43 weeks. At the time the driver had completed 2091 trips. My goal is to calculate the number of weeks this driver would need to drive to get his ASU Online tuition covered by UBER. 
 
-### Outline the research process
+## Outline the research process
 
 We have a data set covering 43 consequtive weeks of driving history - a sample with 43 observations. Using this sample, we want to make an inference about the population (all possible weeks for this particular driver). 
 
@@ -25,7 +25,7 @@ We have a data set covering 43 consequtive weeks of driving history - a sample w
 
 5. More research questions
 
-#### Import and clean data
+### Import and clean data
 
 ```{r echo=FALSE, warning=FALSE, results='hide', message=FALSE, error=FALSE}
 library(dplyr)
@@ -54,7 +54,7 @@ load("uber_stats.Rdata")
 
 We have the weekly data spanning between September 17, 2018 and July 15, 2019. Data for some of the weeks is unavailable as driver didn't drive those weeks. For this research, we will eliminate the empty weeks.
 
-#### Calculate the descriptive statistics, build the distribution plot
+### Calculate the descriptive statistics, build the distribution plot
 
 ```{r}
 trips_stat <- uber_stats %>%
@@ -79,7 +79,7 @@ paid_weeks %>%
 
 We have a nearly normal distribution with a left skew. The mean is 52.5 and standard deviation is 18.3. We doubt if we should use the Poisson distribution instead as we're dealing with the number of event happening in equal and consequtive periods of time. We keep it normal for now.
 
-#### Calculate confidence interval
+### Calculate confidence interval
 
 We are calculating the confidence interval as (point of estimate +- z*SE).
 
@@ -93,7 +93,7 @@ ci_trips <- trips_stat %>%
 
 We found our confidence interval at 95% confidence level to be from `r round(ci_trips$lower, 1)` to `r round(ci_trips$upper, 1)` trips per week.
 
-#### Find min and max number of weeks to reach the perk
+### Find min and max number of weeks to reach the perk
 
 ```{r}
 remaining_weeks_min <- round((3000 - 2091) / ci_trips$upper, 1)
@@ -104,14 +104,14 @@ remaining_weeks_max <- round((3000 - 2091) / ci_trips$lower, 1)
 Considering that the rider already made 2091 trips, it will take this driver at least `r remaining_weeks_min` weeks and at most `r remaining_weeks_max` weeks to reach 3000 trips.
 
 
-## More research questions
+# More research questions
 
-### On which day of the week riders tip most frequently?
+## On which day of the week riders tip most frequently?
 
 That would be great to know if there's any correlation between the day of the week and tip amount and frequency a driver gets. For this analysis, we need to get a data set with separate trips (not just weekly data we used before).  
 
 
-#### Getting data from multiple csvs
+### Getting data from multiple csvs
 
 We have a raw data in Uber weekly statements that we want to put into one data set. 
 
@@ -157,10 +157,13 @@ char_list[16] = "Cleaning Repairs"
 # change the format for currency columns. We use new data frame to avoid any data loss
 uber_trips_clean <- uber_trips %>%
   mutate_at(char_list, currency, na.rm = TRUE)
+
+# order data frame by date_time (ascending order)
+uber_trips_clean <- arrange(uber_trips_clean, date_time)
 ```
 
 
-#### Summary statistics
+### Summary statistics
 
 Chack summary statistics and parameter distributions.
 
@@ -179,7 +182,7 @@ uber_trips_clean %>%
 
 'Tip' variable represent a right-skewed unimodal distribution with several extreme outliers (more than 3 standard deviations from the mean).
 
-#### Find dyas when tips received most frequently
+### Find dyas when tips received most frequently
 
 ```{r}
 # Build a frequency plot
@@ -191,14 +194,97 @@ uber_trips_clean %>%
 # Number of trips with tip and trips per week day
 days_stat <- uber_trips_clean %>%
   group_by(week_day) %>%
-  summarise(trips_w_tip = sum(!is.na(Tip)), trips_total = n(), proportion = trips_w_tip/trips_total)
+  summarise(trips_w_tip = sum(!is.na(Tip)), trips_total = n(), tip_frequency = trips_w_tip/trips_total)
 
 days_stat
 
+days_stat %>%
+  ggplot(aes(x = tip_frequency)) +
+  geom_histogram(binwidth = 0.075)
+
 ```
 
-#### ANOVA hypothesis test
+## ANOVA hypothesis test
+
+From the statistics above, we can see that Fridays and Thursdays are the days when riders tip most often. However, tip frequency for all week days is quite close. 
 
 It's interesting to check whether the differencies in frequencies are due to chance or not. We'll be using ANOVA test to find out.
+
+### Set up hypothesis
+
+H0: Average tip frequency is the same around the week
+HA: Average tip frequency differs at least on one day
+
+Significance level (&alpha;) = 0.05
+
+### Prepare data
+
+All of the observations in our data represent separate rides. To be able to analyze certain days as observations, we need to make some tweaks:
+
+```{r create_shift_day}
+# we create a new variable shift_date which differs from the actual date if the trip done after midnight but before 5am (explained earlier)
+uber_trips_clean <- uber_trips_clean %>%
+  mutate(shift_date = ifelse(hour(date_time) > 5, as.character(date(date_time)), as.character(date(date_time) - 1)))
+
+# combine week day name and shift date to create  
+uber_trips_clean$shift <- paste(uber_trips_clean$week_day, uber_trips_clean$shift_date)
+
+# create a separate data frame with shifts observations
+uber_shifts <- uber_trips_clean %>%
+  group_by(shift) %>%
+  summarise(weekday = first(week_day), trips_w_tip = sum(!is.na(Tip)), trips_total = n(), tip_frequency = trips_w_tip/trips_total)
+
+# calculate variability within the groups
+uber_shifts_summary <- uber_shifts %>%
+  group_by(weekday) %>%
+  summarise(wday_size = n(), wday_mean = mean(tip_frequency), wday_sd = sd(tip_frequency))
+
+uber_shifts_summary
+
+```
+
+
+### Check conditions - ANOVA graphical diagnostics
+
+#### Independence  
+
+Considering the fact that we analyze data for one driver only, it's unclear if daily observations are independent of each other. In case of consequitive days (Thursday, Friday, Saturday, etc.), there's a good chance that they are not independent in terms of driver's behavior, car condition and other factors that influence tipping. However, for example, two Fridays of different weeks (even if consequitive) and months are most likely to be independent. There are not obvious reasons why independence would not hold for most or all observations.
+
+
+#### Normality  
+
+The normality assumption is especially important when the sample size is quite small. The normal probability plots for each week day are shown below:
+
+```{r ANOVA_graphical_diagnostics}
+
+# build the normal probability plots for all seven groups
+for (i in c("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")) {
+uber_shifts_days <- uber_shifts %>%
+  filter(weekday == i)
+qqnorm(uber_shifts_days$tip_frequency, main = i)
+qqline(uber_shifts_days$tip_frequency)
+}
+
+```
+
+*Sun - points follow an S-shaped curve which indicates short tails (narrower than the normal distribution)
+*Mon - not clear
+*Tue - ponts start below the line, bend to follow it, and end above it which indicates long tails (wider than the normal distribution)
+*Wed - points bend up and to the left of the line - obviously, right skew
+*Thu - right skew
+*Fri - nearly normal
+*Sat - nearly normal  
+
+There are some deviation from normality for most of the week days except Friday and Saturday. The sample sizes are not large. The outliers are not extreme, though. The normality of the distributions can be a concern in this case. 
+
+#### Constant variance    
+
+The last assumption is that the variance in the groups is about equal from one group to the next. This assumption can be checked by examining a side-by-side box plot of the tipping frequency across the week days.
+
+```{r}
+boxplot(uber_shifts$tip_frequency ~ uber_shifts$weekday, col="orange",  main = "Tip frequency distribution by week day", ylab = "Proportion of trips with tips", xlab = "Week day")
+```
+
+In this case, the variability is **similar in the 7 groups but not identical**. We saw in a previous section that the standard deviation varies a bit from one group to the next. Whether these differences are from natural variation is unclear.
 
 
