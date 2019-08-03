@@ -36,8 +36,9 @@ library(ggplot2)
 library(readxl)
 library(readr)
 
-# package lubridate for easy date/time handling
-install.packages("lubridate", repos="http://cran.us.r-project.org")
+# package lubridate for easy date/time handling. check if the package is installed already. install it if it's not.
+if (!require(lubridate)) install.packages("lubridate", repos="http://cran.us.r-project.org")
+
 library(lubridate)
 ```
 
@@ -316,3 +317,41 @@ boxplot(uber_shifts$tip_frequency ~ uber_shifts$weekday, col="orange",  main = "
 In this case, the variability is **similar in the 7 groups but not identical**. We saw in a previous section that the standard deviation varies a bit from one group to the next. Whether these differences are from natural variation is unclear.
 
 
+### Compute one-way ANOVA test
+
+Now, we want to calculate the test results. We can use the F statistic to evaluate the hypotheses in what is called an F test. 
+
+Analysis of variance (ANOVA) is used to test whether the mean outcome differs across 2 or more groups. The test statistic F represents a standardized ratio of variability in the sample means relative to the variability within the groups. If H0 is true and the model assumptions are satisfied, the statistic F follows an F distribution with parameters df1 = k - 1 and df2 = n - k. The upper tail of the F distribution is used to represent the p-value.
+
+```{r}
+# Compute the analysis of variance
+results_aov <- aov(tip_frequency ~ weekday, data = uber_shifts)
+
+# Summary of the analysis
+summary(results_aov)
+```
+
+The calculated p-value is 0.365, which is larger than 0.05, indicating the evidence is not strong enough to reject the null hypothesis at a significance level of 0.05. That is, **the data do not provide strong evidence that the average tip frequency varies by week day.** The variance we saw could be due to chance.
+  
+  
+### Non-parametric alternative to one-way ANOVA test
+
+There are concerns about normality and constant variance of the groups in our analysis. We can try using a non-parametric alternative to one-way ANOVA -  **Kruskal-Wallis** rank sum test, which can be used when ANOVA assumptions are not met.
+
+```{r}
+kruskal.test(tip_frequency ~ weekday, data = uber_shifts)
+
+plot(results_aov, 2)
+
+# Extract the residuals
+aov_residuals <- residuals(object = results_aov )
+# Run Shapiro-Wilk test
+shapiro.test(x = aov_residuals )
+
+
+if (!require(car)) install.packages("car", repos="https://cran.r-project.org/")
+library(car)
+leveneTest(tip_frequency ~ weekday, data = uber_shifts)
+```
+
+Again, we got a p-value (0.4322), which is significantly larger than 0.05. There's not enough evidence to reject the null hypothesis.
