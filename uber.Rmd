@@ -28,16 +28,16 @@ We have a data set covering 43 consequtive weeks of driving history - a sample w
 ### Import and clean data
 
 ```{r echo=FALSE, warning=FALSE, results='hide', message=FALSE, error=FALSE}
+# plyr is handy for multiple csv import 
+library(plyr)
+
 library(dplyr)
 library(ggplot2)
 library(readxl)
 library(readr)
 
-# plyr is handy for multiple cvs import 
-library(plyr)
-
 # package lubridate for easy date/time handling
-install.packages("lubridate")
+install.packages("lubridate", repos="http://cran.us.r-project.org")
 library(lubridate)
 ```
 
@@ -56,7 +56,7 @@ We have the weekly data spanning between September 17, 2018 and July 15, 2019. D
 
 ### Calculate the descriptive statistics, build the distribution plot
 
-```{r}
+```{r warning=FALSE, message=FALSE, error=FALSE}
 trips_stat <- uber_stats %>%
   summarise(trips_mean = mean(as.numeric(uber_stats$`Number of trips`), na.rm = TRUE), trips_sd = sd(as.numeric(uber_stats$`Number of trips`), na.rm = TRUE), trips_min = min(as.numeric(uber_stats$`Number of trips`), na.rm = TRUE), trips_max = max(as.numeric(uber_stats$`Number of trips`), na.rm = TRUE))
 
@@ -73,14 +73,14 @@ show(1 + 3.322*log(nonzero_weeks_count))
 
 paid_weeks %>%
   ggplot(aes(as.numeric(paid_weeks$`Number of trips`))) +
-  geom_histogram(binwidth = 10)
+  geom_histogram(binwidth = 10, fill = "orange", colour = "black")
 
 ```
 
 We have a nearly normal distribution with a left skew. The mean is 52.5 and standard deviation is 18.3. We doubt if we should use the Poisson distribution instead as we're dealing with the number of event happening in equal and consequtive periods of time. We keep it normal for now.
 
 ### Calculate confidence interval
-
+  
 We are calculating the confidence interval as (point of estimate +- z*SE).
 
 ```{r}
@@ -92,7 +92,7 @@ ci_trips <- trips_stat %>%
 ```
 
 We found our confidence interval at 95% confidence level to be from `r round(ci_trips$lower, 1)` to `r round(ci_trips$upper, 1)` trips per week.
-
+  
 ### Find min and max number of weeks to reach the perk
 
 ```{r}
@@ -105,17 +105,17 @@ Considering that the rider already made 2091 trips, it will take this driver at 
 
 
 # More research questions
-
+  
 ## On which day of the week riders tip most frequently?
-
+  
 That would be great to know if there's any correlation between the day of the week and tip amount and frequency a driver gets. For this analysis, we need to get a data set with separate trips (not just weekly data we used before).  
 
-
+  
 ### Getting data from multiple csvs
-
+  
 We have a raw data in Uber weekly statements that we want to put into one data set. 
 
-```{r multiple_csv error=FALSE, warning=FALSE, message=FALSE, collapse=TRUE}
+```{r warning=FALSE, message=FALSE, error=FALSE}
 
 # We first put all csvs into dedicated folder. Then, we create a list of all files in csv folder.
 
@@ -125,10 +125,12 @@ myfiles = list.files(path=mydir, pattern="*.csv", full.names=TRUE)
 # We use ldply function from plyr library to build a data frame from multiple csv files using read_csv function from readr library.
 
 uber_trips = ldply(myfiles, read_csv)
+
+names(uber_trips)
 ```
 
 Fortunately, raw data already show a day of the week for each trip, so we don't need to take extra steps to transform date into days of the week. However, we would need to split the 'Date/Time' parameter into 'Date/Time' and 'Weekday'.
-
+  
 ```{r date_time_separation}
 # create new column, convert Date/Time data in a proper format then extract the week day
 
@@ -162,9 +164,9 @@ uber_trips_clean <- uber_trips %>%
 uber_trips_clean <- arrange(uber_trips_clean, date_time)
 ```
 
-
+  
 ### Summary statistics
-
+  
 Chack summary statistics and parameter distributions.
 
 ```{r summary_statistics}
@@ -177,11 +179,11 @@ uber_trips_clean %>%
 uber_trips_clean %>%
   filter(!is.na(Tip)) %>%
   ggplot(aes(x = Tip)) +
-  geom_histogram(binwidth = 3) 
+  geom_histogram(binwidth = 3, fill="orange", colour="black") 
 ```
 
 'Tip' variable represent a right-skewed unimodal distribution with several extreme outliers (more than 3 standard deviations from the mean).
-
+  
 ### Find dyas when tips received most frequently
 
 ```{r}
@@ -189,7 +191,8 @@ uber_trips_clean %>%
 uber_trips_clean %>%
   filter(!is.na(Tip)) %>%
   ggplot(aes(y = Tip, x = week_day)) +
-  geom_bin2d()
+  geom_bin2d() +
+  scale_fill_gradient(low = "yellow", high="red")
 
 # Number of trips with tip and trips per week day
 days_stat <- uber_trips_clean %>%
@@ -198,27 +201,28 @@ days_stat <- uber_trips_clean %>%
 
 days_stat
 
+# Tip frequency histogram
 days_stat %>%
   ggplot(aes(x = tip_frequency)) +
-  geom_histogram(binwidth = 0.075)
+  geom_histogram(binwidth = 0.015, fill="orange", colour="black")
 
 ```
-
+  
 ## ANOVA hypothesis test
-
+  
 From the statistics above, we can see that Fridays and Thursdays are the days when riders tip most often. However, tip frequency for all week days is quite close. 
 
 It's interesting to check whether the differencies in frequencies are due to chance or not. We'll be using ANOVA test to find out.
-
+  
 ### Set up hypothesis
-
-H0: Average tip frequency is the same around the week
+  
+H0: Average tip frequency is the same around the week  
 HA: Average tip frequency differs at least on one day
 
 Significance level (&alpha;) = 0.05
-
+  
 ### Prepare data
-
+  
 All of the observations in our data represent separate rides. To be able to analyze certain days as observations, we need to make some tweaks:
 
 ```{r create_shift_day}
@@ -234,25 +238,49 @@ uber_shifts <- uber_trips_clean %>%
   group_by(shift) %>%
   summarise(weekday = first(week_day), trips_w_tip = sum(!is.na(Tip)), trips_total = n(), tip_frequency = trips_w_tip/trips_total)
 
+```
+
+### Check summary statistics
+
+We need to check the form of tip frequency distribution, mean, and variability. 
+
+```{r}
+# summary statistics table
+uber_shifts %>%
+  summarise(days_total = n(), frequency_mean = mean(tip_frequency), frequency_sd = sd(tip_frequency))
+
+# build a histogram for tip frequency
+uber_shifts %>%
+  ggplot(aes(x = tip_frequency)) +
+  geom_histogram(binwidth = 0.075, fill="orange", colour="black")
+
+```
+
+The histogram above shows a nearly normal distribution with a slight right skew. There are extreme outliers (over 3 sd's from the mean).
+
+Summary statistics grouped by week days:  
+
+```{r}
 # calculate variability within the groups
 uber_shifts_summary <- uber_shifts %>%
   group_by(weekday) %>%
   summarise(wday_size = n(), wday_mean = mean(tip_frequency), wday_sd = sd(tip_frequency))
 
 uber_shifts_summary
-
 ```
 
+Thursday seems to be the day with the highest proportion of trips with tip to the total number of trips (`r round(uber_shifts_summary$wday_mean[5], 3)`). Friday follows closely (`r round(uber_shifts_summary$wday_mean[1], 3)`). Sunday has the lowest tip to trips ratio of `r round(uber_shifts_summary$wday_mean[4], 3)`.
 
+  
 ### Check conditions - ANOVA graphical diagnostics
-
+  
 #### Independence  
-
+  
 Considering the fact that we analyze data for one driver only, it's unclear if daily observations are independent of each other. In case of consequitive days (Thursday, Friday, Saturday, etc.), there's a good chance that they are not independent in terms of driver's behavior, car condition and other factors that influence tipping. However, for example, two Fridays of different weeks (even if consequitive) and months are most likely to be independent. There are not obvious reasons why independence would not hold for most or all observations.
 
-
+  
 #### Normality  
-
+  
 The normality assumption is especially important when the sample size is quite small. The normal probability plots for each week day are shown below:
 
 ```{r ANOVA_graphical_diagnostics}
@@ -261,24 +289,24 @@ The normality assumption is especially important when the sample size is quite s
 for (i in c("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")) {
 uber_shifts_days <- uber_shifts %>%
   filter(weekday == i)
-qqnorm(uber_shifts_days$tip_frequency, main = i)
+qqnorm(uber_shifts_days$tip_frequency, main = i, col="orange")
 qqline(uber_shifts_days$tip_frequency)
 }
 
 ```
 
-*Sun - points follow an S-shaped curve which indicates short tails (narrower than the normal distribution)
-*Mon - not clear
-*Tue - ponts start below the line, bend to follow it, and end above it which indicates long tails (wider than the normal distribution)
-*Wed - points bend up and to the left of the line - obviously, right skew
-*Thu - right skew
-*Fri - nearly normal
-*Sat - nearly normal  
+* Sun - points follow an S-shaped curve which indicates short tails (narrower than the normal distribution)
+* Mon - not clear
+* Tue - ponts start below the line, bend to follow it, and end above it which indicates long tails (wider than the normal distribution)
+* Wed - points bend up and to the left of the line - obviously, right skew
+* Thu - right skew
+* Fri - nearly normal
+* Sat - nearly normal  
 
 There are some deviation from normality for most of the week days except Friday and Saturday. The sample sizes are not large. The outliers are not extreme, though. The normality of the distributions can be a concern in this case. 
-
+  
 #### Constant variance    
-
+  
 The last assumption is that the variance in the groups is about equal from one group to the next. This assumption can be checked by examining a side-by-side box plot of the tipping frequency across the week days.
 
 ```{r}
