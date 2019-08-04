@@ -334,24 +334,74 @@ summary(results_aov)
 The calculated p-value is 0.365, which is larger than 0.05, indicating the evidence is not strong enough to reject the null hypothesis at a significance level of 0.05. That is, **the data do not provide strong evidence that the average tip frequency varies by week day.** The variance we saw could be due to chance.
   
   
-### Non-parametric alternative to one-way ANOVA test
 
-There are concerns about normality and constant variance of the groups in our analysis. We can try using a non-parametric alternative to one-way ANOVA -  **Kruskal-Wallis** rank sum test, which can be used when ANOVA assumptions are not met.
+### Check ANOVA assumptions with other methods
+
+*The following tests has been adopted from the article on STHDA (http://www.sthda.com/english/wiki/one-way-anova-test-in-r). 
+
+The ANOVA test assumes that, the data are normally distributed and the variance across groups are homogeneous. We can check that with some diagnostic plots.
+
+#### Homogenity of variance
+
+The residuals versus fits plot can be used to check the **homogeneity of variances**.
 
 ```{r}
-kruskal.test(tip_frequency ~ weekday, data = uber_shifts)
+# Homogeneity of variances
+plot(results_aov, 1)
+```
 
-plot(results_aov, 2)
+*I'm not sure how to interpret this plot and need to get back to it once I learn more* However, it looks pretty similar to one in the article. It could mean that there is no evident relationships between residuals and fitted values (the mean of each groups), which is good. So, we can assume the homogeneity of variances.
 
-# Extract the residuals
-aov_residuals <- residuals(object = results_aov )
-# Run Shapiro-Wilk test
-shapiro.test(x = aov_residuals )
+It’s also possible to use **Levene’s test** to check the homogeneity of variances.
 
-
+```{r}
 if (!require(car)) install.packages("car", repos="https://cran.r-project.org/")
 library(car)
 leveneTest(tip_frequency ~ weekday, data = uber_shifts)
 ```
 
-Again, we got a p-value (0.4322), which is significantly larger than 0.05. There's not enough evidence to reject the null hypothesis.
+From the output above we can see that the p-value is not less than the significance level of 0.05. This means that there is no evidence to suggest that the variance across groups is statistically significantly different. Therefore, we can assume the homogeneity of variances in the different treatment groups.
+
+The Levene's test is not significant. The homogeneity is fine.
+
+#### Normality
+
+Normality plot of residuals. In the plot below, the quantiles of the residuals are plotted against the quantiles of the normal distribution. A 45-degree reference line is also plotted.
+
+The normal probability plot of residuals is used to check the assumption that the residuals are normally distributed. It should approximately follow a straight line.
+
+```{r}
+# Normality
+plot(results_aov, 2)
+```
+
+In fact, we see the signs of a right skew here (points bend up and to the left of the line). As the distribution is not perfectly normal, it would be handy to run a **Shapiro-Wilk test** on the ANOVA residuals. 
+
+```{r}
+# Extract the residuals
+aov_residuals <- residuals(object = results_aov )
+# Run Shapiro-Wilk test
+shapiro.test(x = aov_residuals )
+```
+
+The p-value is lower than 0.05 significance level, which means that there's less than 1% chance of seeing this distribution if it was in fact normal. Thus, *the normality assumption is not satisfied.*
+
+
+### Non-parametric alternative to one-way ANOVA test
+
+There are concerns about normality in our analysis. We can try using a non-parametric alternative to a one-way ANOVA -  **Kruskal-Wallis** rank sum test, which can be used when ANOVA assumptions are not met.
+
+```{r}
+kruskal.test(tip_frequency ~ weekday, data = uber_shifts)
+```
+
+Employing a Kruskal-Wallis test, we've got a p-value of 0.4322, which is significantly larger than 0.05, meaning that there's not enough evidence to reject the null hypothesis.
+
+
+### Conclusion for the tip frequency analysis
+
+We run ANOVA and Kruskal-Wallis tests to check the hypothesis that UBER riders tip more often on certain days of the week. Neither test could provide significant evidence to reject the null hypothesis at 5% significance level. 
+
+We then conclude that there's in fact no difference between the week days if we talk about how often riders tip this particular driver. Otherwise, we could make a Type II error and failed to reject the null hypothesis when in fact riders tip more often on certain week days.
+
+There are concerns that should be mentioned. First, the normality of the distribution. Second, the sample size for some of the groups (for example, we only have data for 12 Mondays). 
