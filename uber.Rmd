@@ -55,7 +55,7 @@ load("uber_stats.Rdata")
 
 We have the weekly data spanning between September 17, 2018 and July 15, 2019. Data for some of the weeks is unavailable as driver didn't drive those weeks. For this research, we will eliminate the empty weeks.
 
-### Calculate the descriptive statistics, build the distribution plot
+### Calculate descriptive statistics, build the distribution plot
 
 ```{r warning=FALSE, message=FALSE, error=FALSE}
 trips_stat <- uber_stats %>%
@@ -100,6 +100,8 @@ We found our confidence interval at 95% confidence level to be from `r round(ci_
 remaining_weeks_min <- round((3000 - 2091) / ci_trips$upper, 1)
 remaining_weeks_max <- round((3000 - 2091) / ci_trips$lower, 1)
 
+remaining_weeks_min
+remaining_weeks_max
 ```
 
 Considering that the rider already made 2091 trips, it will take this driver at least `r remaining_weeks_min` weeks and at most `r remaining_weeks_max` weeks to reach 3000 trips.
@@ -333,11 +335,11 @@ summary(results_aov)
 
 The calculated p-value is 0.365, which is larger than 0.05, indicating the evidence is not strong enough to reject the null hypothesis at a significance level of 0.05. That is, **the data do not provide strong evidence that the average tip frequency varies by week day.** The variance we saw could be due to chance.
   
-  
+As our analysis didn't show the difference between the groups, we would not proceed with the group to group comparison.   
 
 ### Check ANOVA assumptions with other methods
 
-*The following tests has been adopted from the article on STHDA (http://www.sthda.com/english/wiki/one-way-anova-test-in-r). 
+*The following tests have been adopted from the article on STHDA (http://www.sthda.com/english/wiki/one-way-anova-test-in-r). 
 
 The ANOVA test assumes that, the data are normally distributed and the variance across groups are homogeneous. We can check that with some diagnostic plots.
 
@@ -354,11 +356,15 @@ plot(results_aov, 1)
 
 It’s also possible to use **Levene’s test** to check the homogeneity of variances.
 
-```{r}
+```{r echo=FALSE, warning=FALSE, results='hide', message=FALSE, error=FALSE}
 if (!require(car)) install.packages("car", repos="https://cran.r-project.org/")
 library(car)
-leveneTest(tip_frequency ~ weekday, data = uber_shifts)
 ```
+
+```{r}
+leveneTest(tip_frequency ~ weekday, center=median, data = uber_shifts)
+```
+
 
 From the output above we can see that the p-value is not less than the significance level of 0.05. This means that there is no evidence to suggest that the variance across groups is statistically significantly different. Therefore, we can assume the homogeneity of variances in the different treatment groups.
 
