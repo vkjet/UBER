@@ -9,21 +9,13 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# UBER perks problem
+# Tip Frequency problem
 
+**On which day of the week riders tip most frequently?**
+  
+That would be great to know if there's any correlation between the day of the week and tip amount and frequency a driver gets.  
 
-UBER has introduced the new perks for its drivers recently. One of the perks is the full tuition for the ASU online. Driver needs to make 3000 trips to be able t claim this particular perk. I have a data of a driver who has been driving for 43 weeks. At the time the driver had completed 2091 trips. My goal is to calculate the number of weeks this driver would need to drive to get his ASU Online tuition covered by UBER. 
-
-## Outline the research process
-
-We have a data set covering 43 consequtive weeks of driving history - a sample with 43 observations. Using this sample, we want to make an inference about the population (all possible weeks for this particular driver). 
-
-1. Import and clean data
-2. Calculate the descriptive statistics, build the distribution plot
-3. Calculate confidence interval
-4. Find min and max number of weeks to reach the perk  
-
-5. More research questions
+We have a data set covering 55 consequtive weeks of driving history. Using this sample, we want to make an inference about the population (all possible weeks for this particular driver). 
 
 ### Import and clean data
 
@@ -41,78 +33,6 @@ if (!require(lubridate)) install.packages("lubridate", repos="http://cran.us.r-p
 
 library(lubridate)
 ```
-
-We have already imported the data from Excel file and saved as uber_stats.Rdata file.
-
-```{r uber}
-# uber_stats <- read_delim("uber_stats.csv", 
-#     ";", escape_double = FALSE, na = "NA", 
-#     trim_ws = TRUE)
-# View(uber_stats)
-# save(uber_stats, file = "uber_stats.Rdata")
-load("uber_stats.Rdata")
-```
-
-We have the weekly data spanning between September 17, 2018 and July 15, 2019. Data for some of the weeks is unavailable as driver didn't drive those weeks. For this research, we will eliminate the empty weeks.
-
-### Calculate descriptive statistics, build the distribution plot
-
-```{r warning=FALSE, message=FALSE, error=FALSE}
-trips_stat <- uber_stats %>%
-  summarise(trips_mean = mean(as.numeric(uber_stats$`Number of trips`), na.rm = TRUE), trips_sd = sd(as.numeric(uber_stats$`Number of trips`), na.rm = TRUE), trips_min = min(as.numeric(uber_stats$`Number of trips`), na.rm = TRUE), trips_max = max(as.numeric(uber_stats$`Number of trips`), na.rm = TRUE))
-
-paid_weeks <- uber_stats %>%
-  filter(!is.na(as.numeric(uber_stats$`Number of trips`)), n())
-
-nonzero_weeks_count <- NROW(paid_weeks$`Number of trips`)
-
-# It's hard to pick the right number of bins for the following histogram, so we're using Sturge's Rule (K = 1 + 3. 322 logN). Where K is nthe number of bins and N is the number of observations.
-
-show(1 + 3.322*log(nonzero_weeks_count))
-
-# We need approximately 13 bins for the plot. We ended up with 8, though.
-
-paid_weeks %>%
-  ggplot(aes(as.numeric(paid_weeks$`Number of trips`))) +
-  geom_histogram(binwidth = 10, fill = "orange", colour = "black")
-
-```
-
-We have a nearly normal distribution with a left skew. The mean is 52.5 and standard deviation is 18.3. We doubt if we should use the Poisson distribution instead as we're dealing with the number of event happening in equal and consequtive periods of time. We keep it normal for now.
-
-### Calculate confidence interval
-  
-We are calculating the confidence interval as (point of estimate +- z*SE).
-
-```{r}
-SE_trips <- trips_stat$trips_sd / sqrt(nonzero_weeks_count)
-z_trips <- abs(qnorm(0.025))
-margin_of_error_trips <- z_trips*SE_trips
-ci_trips <- trips_stat %>%
-  summarise(lower = trips_mean - margin_of_error_trips, upper = trips_mean + margin_of_error_trips)
-```
-
-We found our confidence interval at 95% confidence level to be from `r round(ci_trips$lower, 1)` to `r round(ci_trips$upper, 1)` trips per week.
-  
-### Find min and max number of weeks to reach the perk
-
-```{r}
-remaining_weeks_min <- round((3000 - 2091) / ci_trips$upper, 1)
-remaining_weeks_max <- round((3000 - 2091) / ci_trips$lower, 1)
-
-remaining_weeks_min
-remaining_weeks_max
-```
-
-Considering that the rider already made 2091 trips, it will take this driver at least `r remaining_weeks_min` weeks and at most `r remaining_weeks_max` weeks to reach 3000 trips.
-
-
-# More research questions
-  
-## On which day of the week riders tip most frequently?
-  
-That would be great to know if there's any correlation between the day of the week and tip amount and frequency a driver gets. For this analysis, we need to get a data set with separate trips (not just weekly data we used before).  
-
   
 ### Getting data from multiple csvs
   
@@ -132,6 +52,14 @@ uber_trips = ldply(myfiles, read_csv)
 names(uber_trips)
 ```
 
+First, we would need to clean the name and an email of the driver for ethical reasons.
+
+```{r}
+# Clean name and email
+uber_trips <- uber_trips %>%
+  mutate(`Driver Name` = "John Doe", `Email` = "jd@jd.com")
+```
+
 Fortunately, raw data already show a day of the week for each trip, so we don't need to take extra steps to transform date into days of the week. However, we would need to split the 'Date/Time' parameter into 'Date/Time' and 'Weekday'.
   
 ```{r date_time_separation}
@@ -144,6 +72,13 @@ uber_trips <- uber_trips %>%
 ```
 
 *Please, note that driver's shift often spans from evening to late night. Thus, for this particular analysis we don't switch the day right after midnight and we keep the same day until 5am in the morning. This way a tip recieved on a Sunday's late night ride considered a Sunday's tip, not Monday's which makes sense.*   
+
+
+```{r}
+range(uber_trips$date_time)
+```
+
+We have the weekly data spanning between September 22, 2018 and November 8, 2019. Data for some of the weeks is unavailable as driver didn't drive those weeks. 
 
 All currency columns need to be converted into numerical format.
 
@@ -169,14 +104,28 @@ uber_trips_clean <- arrange(uber_trips_clean, date_time)
 
   
 ### Summary statistics
+
+```{r}
+summarize(uber_trips_clean, total_trips = n(), total_per_trip = mean(Total), tip_per_trip = sum(Tip, na.rm = TRUE)/n(), tip_frequency = sum(!is.na(Tip))/n())
+```
   
-Chack summary statistics and parameter distributions.
+There is a problem with the statistics above: the trips that have been cancelled by either driver or rider are counted as regular trips and add up to the total number of rides. However, no tip can be given for a cancelled ride. This means, that the values above are slightly lower than the real values. Let's filter out those cancelled trips to get more accurate statistics.
+
+```{r}
+uber_trips_clean %>%
+  filter(is.na(Cancellation)) %>%
+  summarize(total_trips = n(), total_per_trip = mean(Total), tip_per_trip = sum(Tip, na.rm = TRUE)/n(), tip_frequency = sum(!is.na(Tip))/n())
+```
+
+In fact, this driver on average made $7.71 per trip and almost 80 cents per trip in tips for the period reported. Compare this to 60 cents for 5-star drivers reported by Chandar et al. 
+  
+Check summary statistics and parameter distributions.
 
 ```{r summary_statistics}
 # Summary stats for Tip variable
 uber_trips_clean %>% 
   filter(!is.na(Tip)) %>%
-  summarise(tip_mean = mean(as.numeric(Tip,  na.rm = TRUE)), tip_min = min(as.numeric(Tip)), tip_max = max(as.numeric(Tip,  na.rm = TRUE)), tip_sd = sd(as.numeric(Tip))) %>%
+  summarise(trips_w_tips = n(), tip_mean = mean(as.numeric(Tip,  na.rm = TRUE)), tip_min = min(as.numeric(Tip)), tip_max = max(as.numeric(Tip,  na.rm = TRUE)), tip_sd = sd(as.numeric(Tip))) %>%
   show()
 
 uber_trips_clean %>%
@@ -186,6 +135,7 @@ uber_trips_clean %>%
 ```
 
 'Tip' variable represent a right-skewed unimodal distribution with several extreme outliers (more than 3 standard deviations from the mean).
+
   
 ### Find dyas when tips received most frequently
 
@@ -199,6 +149,7 @@ uber_trips_clean %>%
 
 # Number of trips with tip and trips per week day
 days_stat <- uber_trips_clean %>%
+  filter(is.na(Cancellation)) %>%
   group_by(week_day) %>%
   summarise(trips_w_tip = sum(!is.na(Tip)), trips_total = n(), tip_frequency = trips_w_tip/trips_total)
 
@@ -213,7 +164,7 @@ days_stat %>%
   
 ## ANOVA hypothesis test
   
-From the statistics above, we can see that Fridays and Thursdays are the days when riders tip most often. However, tip frequency for all week days is quite close. 
+From the statistics above, we can see that Tuesdays, Fridays, and Thursdays are the days when riders tip most often (close to 30% of all trips are tipped). However, tip frequency for all week days is quite close. 
 
 It's interesting to check whether the differencies in frequencies are due to chance or not. We'll be using ANOVA test to find out.
   
@@ -236,8 +187,9 @@ uber_trips_clean <- uber_trips_clean %>%
 # combine week day name and shift date to create  
 uber_trips_clean$shift <- paste(uber_trips_clean$week_day, uber_trips_clean$shift_date)
 
-# create a separate data frame with shifts observations
+# create a separate data frame with shifts observations. Filter for cancelled trips (see above)
 uber_shifts <- uber_trips_clean %>%
+  filter(is.na(Cancellation)) %>%
   group_by(shift) %>%
   summarise(weekday = first(week_day), trips_w_tip = sum(!is.na(Tip)), trips_total = n(), tip_frequency = trips_w_tip/trips_total)
 
@@ -259,7 +211,7 @@ uber_shifts %>%
 
 ```
 
-The histogram above shows a nearly normal distribution with a slight right skew. There are extreme outliers (over 3 sd's from the mean).
+The histogram above shows a slight right skew. There are extreme outliers (over 3 sd's from the mean).
 
 Summary statistics grouped by week days:  
 
@@ -272,7 +224,7 @@ uber_shifts_summary <- uber_shifts %>%
 uber_shifts_summary
 ```
 
-Thursday seems to be the day with the highest proportion of trips with tip to the total number of trips (`r round(uber_shifts_summary$wday_mean[5], 3)`). Friday follows closely (`r round(uber_shifts_summary$wday_mean[1], 3)`). Sunday has the lowest tip to trips ratio of `r round(uber_shifts_summary$wday_mean[4], 3)`.
+Friday seems to be the day with the highest proportion of trips with tip to the total number of trips (`r round(uber_shifts_summary$wday_mean[5], 3)`). Thursday and Tuesday follow closely (`r round(uber_shifts_summary$wday_mean[1], 3)`). Sunday has the lowest tip to trips ratio of `r round(uber_shifts_summary$wday_mean[4], 3)`.
 
   
 ### Check conditions - ANOVA graphical diagnostics
@@ -300,9 +252,9 @@ qqline(uber_shifts_days$tip_frequency)
 
 * Sun - points follow an S-shaped curve which indicates short tails (narrower than the normal distribution)
 * Mon - not clear
-* Tue - ponts start below the line, bend to follow it, and end above it which indicates long tails (wider than the normal distribution)
+* Tue - points start below the line, bend to follow it, and end above it which indicates long tails (wider than the normal distribution)
 * Wed - points bend up and to the left of the line - obviously, right skew
-* Thu - right skew
+* Thu - not clear
 * Fri - nearly normal
 * Sat - nearly normal  
 
@@ -318,6 +270,7 @@ boxplot(uber_shifts$tip_frequency ~ uber_shifts$weekday, col="orange",  main = "
 
 In this case, the variability is **similar in the 7 groups but not identical**. We saw in a previous section that the standard deviation varies a bit from one group to the next. Whether these differences are from natural variation is unclear.
 
+*We've checked the outlier for Tuesday when proportion of trips with tips was 1. Indeed, on August 20, 2019, driver made 7 trips and received tips for each of them.*
 
 ### Compute one-way ANOVA test
 
@@ -333,7 +286,7 @@ results_aov <- aov(tip_frequency ~ weekday, data = uber_shifts)
 summary(results_aov)
 ```
 
-The calculated p-value is 0.365, which is larger than 0.05, indicating the evidence is not strong enough to reject the null hypothesis at a significance level of 0.05. That is, **the data do not provide strong evidence that the average tip frequency varies by week day.** The variance we saw could be due to chance.
+The calculated p-value is 0.399, which is, obviously, larger than 0.05, indicating the evidence is not strong enough to reject the null hypothesis at a significance level of 0.05. That is, **the data do not provide strong evidence that the average tip frequency varies by week day.** The variance we saw could be due to chance.
   
 As our analysis didn't show the difference between the groups, we would not proceed with the group to group comparison.   
 
@@ -401,8 +354,7 @@ There are concerns about normality in our analysis. We can try using a non-param
 kruskal.test(tip_frequency ~ weekday, data = uber_shifts)
 ```
 
-Employing a Kruskal-Wallis test, we've got a p-value of 0.4322, which is significantly larger than 0.05, meaning that there's not enough evidence to reject the null hypothesis.
-
+Employing a Kruskal-Wallis test, we've got a p-value of 0.4073, which is significantly larger than 0.05, meaning that there's not enough evidence to reject the null hypothesis. This result is very close to the p-value from the ANOVA test (0.399).
 
 ### Conclusion for the tip frequency analysis
 
@@ -410,4 +362,13 @@ We run ANOVA and Kruskal-Wallis tests to check the hypothesis that UBER riders t
 
 We then conclude that there's in fact no difference between the week days if we talk about how often riders tip this particular driver. Otherwise, we could make a Type II error and failed to reject the null hypothesis when in fact riders tip more often on certain week days.
 
-There are concerns that should be mentioned. First, the normality of the distribution. Second, the sample size for some of the groups (for example, we only have data for 12 Mondays). 
+There are concerns that should be mentioned. First, the normality of the distribution. Second, the sample size for some of the groups (for example, we only have data for 19 Mondays). 
+
+
+# Fare Level problem
+
+Chandar, et al. (2019) reports that "riders are more likely to tip as the fare of the trip increses, but at a decreasing rate."
+
+**Does our data aligns with this statement? Is there an association between the fare level and tip size?**
+
+
