@@ -33,12 +33,13 @@ if (!require(lubridate)) install.packages("lubridate", repos="http://cran.us.r-p
 
 library(lubridate)
 ```
-  
+
+*the following code chunks won't run as we already have a data frame ready*  
+
+```{r eval=FALSE, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
 ### Getting data from multiple csvs
   
-We have a raw data in Uber weekly statements that we want to put into one data set. 
-
-```{r warning=FALSE, message=FALSE, error=FALSE}
+# We have a raw data in Uber weekly statements that we want to put into one data set.
 
 # We first put all csvs into dedicated folder. Then, we create a list of all files in csv folder.
 
@@ -48,16 +49,26 @@ myfiles = list.files(path=mydir, pattern="*.csv", full.names=TRUE)
 # We use ldply function from plyr library to build a data frame from multiple csv files using read_csv function from readr library.
 
 uber_trips = ldply(myfiles, read_csv)
-
-names(uber_trips)
 ```
 
-First, we would need to clean the name and an email of the driver for ethical reasons.
+```{r eval=FALSE, include=FALSE}
+# First, we would need to clean the name and an email of the driver for ethical reasons.
 
-```{r}
 # Clean name and email
 uber_trips <- uber_trips %>%
   mutate(`Driver Name` = "John Doe", `Email` = "jd@jd.com")
+
+# Save data frame in rds file
+saveRDS(uber_trips, file = "uber_trips.rds")
+```
+
+--------------------------------------------
+
+*Load data frame*
+
+```{r}
+uber_trips <- readRDS(file = "uber_trips.rds")
+names(uber_trips)
 ```
 
 Fortunately, raw data already show a day of the week for each trip, so we don't need to take extra steps to transform date into days of the week. However, we would need to split the 'Date/Time' parameter into 'Date/Time' and 'Weekday'.
@@ -364,11 +375,59 @@ We then conclude that there's in fact no difference between the week days if we 
 
 There are concerns that should be mentioned. First, the normality of the distribution. Second, the sample size for some of the groups (for example, we only have data for 19 Mondays). 
 
+----------------------
 
 # Fare Level problem
 
-Chandar, et al. (2019) reports that "riders are more likely to tip as the fare of the trip increses, but at a decreasing rate."
+In National Tipping Field Experiment, Chandar, et al. (2019)  report that "riders are more likely to tip as the fare of the trip increses, but at a decreasing rate."
 
 **Does our data aligns with this statement? Is there an association between the fare level and tip size?**
 
+```{r}
+uber_trips_clean %>%
+  filter(is.na(Cancellation)) %>% #filtering for cancelled trips
+  mutate(Tip =  ifelse(is.na(Tip), 0, Tip)) %>%
+  mutate(Total = round(Total-Tip)) %>% #deducting total by tip amount, rounding total to nearest dollar
+  filter(Tip > 0, Total >= 2) %>% #filtering for trips that were not tipped, and for those with a total less than $2 (those are probably just adjastments for previous trips and not the actual rides as the minimal fare for any trip is between $2 and $3)
+  group_by(Total) %>% #creating bins for different amounts of total fare
+  filter(n() > 9) %>% #filtering for bins with less than 10 trips inside
+  summarize(mean_tip = mean(Tip)) %>%
+  ggplot(aes(x = Total, y = mean_tip)) +
+  geom_point() +
+  geom_line(col = "orange") +
+  #geom_text(aes(label= Total), hjust = -0.2, vjust = 0) +
+  labs(title = "Average tip conditional on tipping by trip fare, \nrounded to the nearest dollar", y = "Mean tip in USD (cond. on tipping)", x = "Trip total fare (grouped by dollar)")
+```
 
+```{r}
+uber_trips_clean %>%
+  filter(is.na(Cancellation)) %>% #see previous code chunk for explanations
+  mutate(Tip =  ifelse(is.na(Tip), 0, Tip)) %>% #replacing all NAs with 0
+  mutate(Total = round(Total-Tip)) %>% #deducting tips from total
+  filter(Total >= 2) %>% #filtering for trips with total fare less than $2
+  group_by(Total) %>%
+  filter(n() > 9) %>%
+  summarize(mean_tip = mean(Tip)) %>%
+  ggplot(aes(x = Total, y = mean_tip)) +
+  geom_point() +
+  geom_line(col = "orange") +
+  geom_text(aes(label= Total), hjust = -0.2, vjust = 0) +
+  labs(title = "Average tip by trip fare, rounded to the nearest dollar", y = "Mean tip in USD", x = "Trip total fare (grouped by dollar)")
+```
+
+
+
+```{r}
+uber_trips_clean %>%
+  mutate(Tip =  ifelse(is.na(Tip), 0, Tip), Total = round(Total-Tip)) %>%
+  filter(is.na(Cancellation), Total > 2) %>%
+  group_by(Total) %>%
+  filter(n() > 9) %>%
+  summarize(trips_w_tips = sum(Tip>0), total_trips = n(), tips_frequency = trips_w_tips/n()) %>%
+  ggplot(aes(x = Total, y = tips_frequency)) +
+  geom_point() +
+  geom_line(col = "orange") +
+  labs(title = "Percent of trips tipped by trip fare, \nrounded to the nearest dollar", y = "Percent of trips tipped", x = "Trip total fare (grouped by dollar)")
+```
+
+If we had to build the confidence intervals for each of total fare bins, we had to exclude most of the bins that don't meet 10 success/failures condition. On average, we have success rate between 25% and 30%. So, only bins with over 40 and over 30 trips respectively would potentially fit this condition.
