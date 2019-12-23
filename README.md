@@ -10,4 +10,10 @@ That would be great to know if there’s any correlation between the day of the 
 
 We have a data set covering 55 consequtive weeks of driving history. Using this sample, we want to make an inference about the population (all possible weeks for this particular driver).
 
+# UBER Fare Level problem
+
+In National Tipping Field Experiment, Chandar, et al. (2019) report that “riders are more likely to tip as the fare of the trip increses, but at a decreasing rate.”
+
+## Does our data aligns with this statement? Is there an association between the fare level and tip size?
+
 [See an HTML version of the research here](http://vkjet.github.io/UBER/uber.html)
