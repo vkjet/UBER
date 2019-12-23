@@ -2,6 +2,8 @@
 
 Analysis of weekly trips statistics of a random driver in Phoenix, AZ
 
+Author: Valeriy Kondruk
+
 ## Research question: On which day of the week riders tip most frequently?
 
 That would be great to know if there’s any correlation between the day of the week and tip amount and tipping frequency for a particular driver.
