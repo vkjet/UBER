@@ -9,4 +9,4 @@ That would be great to know if there’s any correlation between the day of the 
 
 We have a data set covering 55 consequtive weeks of driving history. Using this sample, we want to make an inference about the population (all possible weeks for this particular driver).
 
-[See an HTML version of the research here]http://vkjet.github.io/UBER/uber.html
+[See an HTML version of the research here](http://vkjet.github.io/UBER/uber.html)
