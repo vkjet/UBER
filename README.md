@@ -1,8 +1,8 @@
 # UBER Tip Frequency Problem
 
-Analysis of weekly trips statistics of a random driver in Phoenix, AZ
+**Analysis of weekly trips statistics of a random driver in Phoenix, AZ**
 
-Author: Valeriy Kondruk
+*Author: Valeriy Kondruk*
 
 ## Research question: On which day of the week riders tip most frequently?
 
