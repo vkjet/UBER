@@ -395,7 +395,7 @@ uber_trips_clean %>%
   ggplot(aes(x = Total, y = mean_tip)) +
   geom_point() +
   geom_line(col = "orange") +
-  #geom_text(aes(label= Total), hjust = -0.2, vjust = 0) +
+  geom_text(aes(label= Total), hjust = -0.2, vjust = 0) +
   labs(title = "Average tip conditional on tipping by trip fare, \nrounded to the nearest dollar", y = "Mean tip in USD (cond. on tipping)", x = "Trip total fare (grouped by dollar)")
 ```
 
@@ -427,7 +427,30 @@ uber_trips_clean %>%
   ggplot(aes(x = Total, y = tips_frequency)) +
   geom_point() +
   geom_line(col = "orange") +
+  geom_text(aes(label= Total), hjust = -0.2, vjust = 0) +
   labs(title = "Percent of trips tipped by trip fare, \nrounded to the nearest dollar", y = "Percent of trips tipped", x = "Trip total fare (grouped by dollar)")
 ```
 
 If we had to build the confidence intervals for each of total fare bins, we had to exclude most of the bins that don't meet 10 success/failures condition. On average, we have success rate between 25% and 30%. So, only bins with over 40 and over 30 trips respectively would potentially fit this condition.
+
+## Linear regression model
+
+```{r}
+uber_trips_lm <- uber_trips_clean %>%
+  mutate(Tip =  ifelse(is.na(Tip), 0, Tip)) %>%
+  mutate(Total_minus_tip = (Total-Tip)) %>%
+  filter(is.na(Cancellation), Total_minus_tip > 2, Tip > 0)
+
+
+tip_trip_lm <- lm(Tip ~ Total_minus_tip, data=uber_trips_lm)
+
+summary(tip_trip_lm)  
+
+plot(tip_trip_lm$residuals)
+  
+```
+
+Looks pretty random to me.
+
+
+
