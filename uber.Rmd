@@ -435,6 +435,16 @@ If we had to build the confidence intervals for each of total fare bins, we had 
 
 ## Linear regression model
 
+
+
+
+---------------------
+
+# Machine Learning modeling
+
+
+## Linear regression model
+
 ```{r}
 uber_trips_lm <- uber_trips_clean %>%
   mutate(Tip =  ifelse(is.na(Tip), 0, Tip)) %>%
@@ -450,7 +460,40 @@ plot(tip_trip_lm$residuals)
   
 ```
 
-Looks pretty random to me.
 
+```{r include=FALSE}
+library('h2o')
+h2o.init()
+```
 
+```{r}
+uberML <- uber_trips_clean %>%
+  mutate(date = format(date_time, '%Y-%m-%d'), trip_start = format(date_time, '%H:%M:%S'), tipped = ifelse(is.na(Tip), 'no', 'yes')) %>%
+  select(7:32) %>%
+  select(tipped, Tip, date, week_day, Total, trip_start, everything()) %>%
+  select(1:23) 
+
+uberML_h2o <- as.h2o(uberML)
+uberML_h2o[,1] = as.factor(uberML_h2o[,1])
+parts1 <- h2o.splitFrame(uberML_h2o, 0.8)
+train1 <- parts1[[1]]
+test1 <- parts1[[2]]
+```
+
+```{r}
+aML <- h2o.automl(8:9, 1, train1, max_runtime_secs = 30, seed = 1234)
+
+aML_leaders <- aML@leaderboard
+print(aML_leaders, n = nrow(aML_leaders))
+aML_leader1 <- aML@leader
+h2o.performance(aML_leader1, test1)
+```
+
+```{r}
+
+tipLM <- lm(Tip ~ Time, data = uberML)
+
+summary(tipLM)
+
+```
 
