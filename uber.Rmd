@@ -1,7 +1,6 @@
 ---
-title: "uber"
+title: "UBER Tips Analysis"
 author: "Valeriy Kondruk"
-date: "11 07 2019"
 output: html_document
 ---
 
@@ -433,8 +432,8 @@ uber_trips_clean %>%
 
 If we had to build the confidence intervals for each of total fare bins, we had to exclude most of the bins that don't meet 10 success/failures condition. On average, we have success rate between 25% and 30%. So, only bins with over 40 and over 30 trips respectively would potentially fit this condition.
 
-## Linear regression model
-
+  
+  
 
 
 
@@ -446,33 +445,48 @@ If we had to build the confidence intervals for each of total fare bins, we had 
 ## Linear regression model
 
 ```{r}
-uber_trips_lm <- uber_trips_clean %>%
+uberML <- uber_trips_clean %>%
   mutate(Tip =  ifelse(is.na(Tip), 0, Tip)) %>%
+  # Tip and Total variable are highly correlated because Total includes Tip. So we want to avoid this correlation for our models by creating a Total_minus_tip variable 
   mutate(Total_minus_tip = (Total-Tip)) %>%
-  filter(is.na(Cancellation), Total_minus_tip > 2, Tip > 0)
+  mutate(date = format(date_time, '%Y-%m-%d'), trip_start = format(date_time, '%H:%M:%S'), tipped = ifelse(Tip==0, 'no', 'yes')) %>%
+  filter(is.na(Cancellation)) %>%
+  select(7:33) %>%
+  select(tipped, Tip, date, week_day, Total_minus_tip, trip_start, everything()) %>%
+  select(1:24)
 
 
-tip_trip_lm <- lm(Tip ~ Total_minus_tip, data=uber_trips_lm)
+uberLM <- lm(Tip ~ Total_minus_tip, data=uberML)
 
-summary(tip_trip_lm)  
+summary(uberLM)  
 
-plot(tip_trip_lm$residuals)
+plot(uberLM$residuals)
   
 ```
 
+Looks like total fare amount (excluding tip) can only explain less than 5% (`r uberLM$adjr2*100`% to be precise) of variation in tip size. For each dollar of fare Tip amount increases by around 7 cents. Not much, indeed. With the intercept of 0.31 the fare without tip should be around $10 for our driver to receive $1 in tips.   
+
+Residuals distribution looks pretty random, which is good. 
+
+Let's try adding other variables to the model. 
+
+```{r}
+uberLM_ <- lm(Tip ~ Total_minus_tip + Distance + Time, data=uberML)
+
+summary(uberLM_)
+```
+
+The adjusted R^2 slightly increased to almost 6% which is still super low. Good to know that all `Total_minus_tip`, `Distance`, and `Time` are valuable at 5% alpha. The `weekday` variable adds no explanatory power to this multiple linear regression model. Later, we can try categorizing the starting time of the trip variable (`trip_start`) to see if the time of the day makes any difference in the context of tipping.
+
+Now, let's check out what **machine learning** can do with this data. We should start an H2O engine:
 
 ```{r include=FALSE}
 library('h2o')
 h2o.init()
 ```
 
+Save dataframe as h2o object and split for training and testing datasets. 
 ```{r}
-uberML <- uber_trips_clean %>%
-  mutate(date = format(date_time, '%Y-%m-%d'), trip_start = format(date_time, '%H:%M:%S'), tipped = ifelse(is.na(Tip), 'no', 'yes')) %>%
-  select(7:32) %>%
-  select(tipped, Tip, date, week_day, Total, trip_start, everything()) %>%
-  select(1:23) 
-
 uberML_h2o <- as.h2o(uberML)
 uberML_h2o[,1] = as.factor(uberML_h2o[,1])
 parts1 <- h2o.splitFrame(uberML_h2o, 0.8)
@@ -480,20 +494,49 @@ train1 <- parts1[[1]]
 test1 <- parts1[[2]]
 ```
 
-```{r}
-aML <- h2o.automl(8:9, 1, train1, max_runtime_secs = 30, seed = 1234)
+We will be using this great tool from the h2o package called **AutoML**. It, basically, tries applying different models to our data including gradient boosting, generalized linear model, deep learning and many more. 
 
+First, we are going to predict the tip amount (`Tip`). This is a numerical variable, so no classification methods would be applied.
+
+```{r include=FALSE}
+aML <- h2o.automl(4:10, 2, train1, max_runtime_secs = 30, seed = 1234)
+```
+
+AutoML then provides the leaderboard with models and their performances:
+
+```{r}
 aML_leaders <- aML@leaderboard
 print(aML_leaders, n = nrow(aML_leaders))
 aML_leader1 <- aML@leader
-h2o.performance(aML_leader1, test1)
+perf <- h2o.performance(aML_leader1, test1)
+perf
+```
+
+
+No surprise, the best performing model for the split is GLM (Generalized Linear Model). AutoML doesn't show us the adjusted R^2 value for the model for us to directly compare it to the linear regression model we had before. However,  *NOTE: Chances are high that a leading algorithm would be different for a different split.*
+
+If the leading model is GLM, we can check coefficients for the actual model:
+
+```{r}
+#h2o.coef(aML_leader1)
+```
+
+We can now try applying AutoML to the variable `tipped` which has only 2 categories 0 and 1 (not tipped and tipped).
+
+```{r include=FALSE}
+tipped_aML <- h2o.automl(4:10, 1, train1, max_runtime_secs = 30, seed = 1234)
 ```
 
 ```{r}
-
-tipLM <- lm(Tip ~ Time, data = uberML)
-
-summary(tipLM)
+tipped_aML_leaders <- tipped_aML@leaderboard
+print(tipped_aML_leaders, n = nrow(tipped_aML_leaders))
+tipped_aML_leader1 <- tipped_aML@leader
+h2o.performance(tipped_aML_leader1, test1)
 
 ```
 
+We ended up with the XGBoost model here. It showed pretty bad performance, though. The AUC parameter (area under the curve) is only 54%, which is only 4% higher than the benchmark. 
+
+### Conclusion               DRAFT
+
+It's pretty clear that we cannot make predictions on the tipping size and/or frequency based on the data Uber provides to its drivers. That would be interesting to check if pick-up/drop-off location impacts tipping but we don't have these data now. Also, we can try including time of the day in the model. There is a widespread belief that people tip more during the late night trips. We doubt this, but it would be interesting to find out.
