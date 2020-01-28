@@ -526,12 +526,14 @@ Now, let's check out what **machine learning** can do with this data. We should 
 ```{r include=FALSE}
 library('h2o')
 h2o.init()
+h2o.removeAll() # Clean slate - just in case the cluster was already running 
 ```
 
-Save dataframe as h2o object and split for training and testing datasets. 
+Save dataframe as h2o object and split for training and testing datasets. We don't creat a validation part here as our data set is quite small and we want to feed more data to the training model.
 ```{r}
 uberML_h2o <- as.h2o(uberML)
 uberML_h2o[,1] = as.factor(uberML_h2o[,1])
+uberML_h2o[,4] = as.factor(uberML_h2o[,4])
 parts1 <- h2o.splitFrame(uberML_h2o, 0.8)
 train1 <- parts1[[1]]
 test1 <- parts1[[2]]
@@ -578,7 +580,37 @@ h2o.performance(tipped_aML_leader1, test1)
 
 ```
 
-We ended up with the XGBoost model here. It showed pretty bad performance, though. The AUC parameter (area under the curve) is only 54%, which is only 4% higher than the benchmark. 
+We ended up with the XGBoost (Extreme Gradient Boosting) model here. It showed pretty bad performance, though. The AUC parameter (area under the curve) is only 54%, which is only 4% higher than the benchmark. We should experiment with XGBoost by tweaking its parameters.
+
+Let's split the data in 3 parts first.
+```{r}
+partsXGB <- h2o.splitFrame(uberML_h2o, ratios = c(0.6, 0.2))
+trainXGB <- partsXGB[[1]]
+validXGB <- partsXGB[[2]]
+testXGB <- partsXGB[[3]]
+```
+
+
+```{r}
+tippedXGB <- h2o.xgboost(4:14, 1, 
+                         training_frame = trainXGB, 
+                         validation_frame = validXGB,
+                         model_id = 'tippedXGB', 
+                         stopping_rounds = 3, # stops if not improved for x number of last trees
+                         stopping_metric = 'mean_per_class_error',
+                         seed = 1234, 
+                         ntrees = 100, 
+                         max_depth = 200,
+                         sample_rate = 0.69, ## use a random % of the rows to fit each tree (like in random forest)
+                         col_sample_rate = 0.6, ## use a random % of the columns
+                         
+                         )
+summary(tippedXGB)
+#h2o.performance(tippedXGB, validXGB)
+h2o.performance(tippedXGB, testXGB)
+```
+
+After numerous experiments with different parameters, we could not come up with the model that is better than one provided by AutoML. On diiferent settings, we got the recall rate of around 19% and the AUC around 59% for validation dataset. Those values dropped significantly on the test set. 
 
 ### Conclusion               DRAFT
 
