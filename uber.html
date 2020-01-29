@@ -713,7 +713,7 @@ shapiro.test(x = aov_residuals )</code></pre>
   mutate(Tip =  ifelse(is.na(Tip), 0, Tip)) %&gt;%
   # Tip and Total variable are highly correlated because Total includes Tip. So we want to avoid this correlation for our models by creating a Total_minus_tip variable 
   mutate(Total_minus_tip = (Total-Tip)) %&gt;%
-  mutate(date = format(date_time, '%Y-%m-%d'), trip_start = format(date_time, '%H:%M:%S'), tipped = ifelse(Tip==0, 'no', 'yes')) %&gt;%
+  mutate(date = format(date_time, '%Y-%m-%d'), trip_start = format(date_time, '%H:%M:%S'), tipped = ifelse(Tip==0, 0, 1)) %&gt;%
   filter(is.na(Cancellation)) %&gt;%
   select(7:33) %&gt;%
   select(tipped, Tip, date, week_day, Total_minus_tip, trip_start, everything()) %&gt;%
@@ -771,8 +771,102 @@ summary(uberLM_)</code></pre>
 ## Multiple R-squared:  0.06052,    Adjusted R-squared:  0.05955 
 ## F-statistic: 62.72 on 3 and 2921 DF,  p-value: &lt; 2.2e-16</code></pre>
 <p>The adjusted R^2 slightly increased to almost 6% which is still super low. Good to know that all <code>Total_minus_tip</code>, <code>Distance</code>, and <code>Time</code> are valuable at 5% alpha. The <code>weekday</code> variable adds no explanatory power to this multiple linear regression model. Later, we can try categorizing the starting time of the trip variable (<code>trip_start</code>) to see if the time of the day makes any difference in the context of tipping.</p>
+</div>
+<div id="logistic-regression" class="section level2">
+<h2>Logistic regression</h2>
+<p>The code below estimates a <strong>logistic regression model</strong> using the glm (generalized linear model) function. Logistic regression wors for any binary response variable. First, we convert <code>tipped</code> to a factor to indicate that <code>rank</code>tipped` variable should be treated as a categorical variable.</p>
+<pre class="r"><code>uberML[,1] = as.factor(uberML[,1])
+
+tippedLogitM &lt;- glm(tipped ~ Total_minus_tip + Distance + Time + week_day, data = uberML, family = 'binomial')
+
+summary(tippedLogitM)</code></pre>
+<pre><code>## 
+## Call:
+## glm(formula = tipped ~ Total_minus_tip + Distance + Time + week_day, 
+##     family = &quot;binomial&quot;, data = uberML)
+## 
+## Deviance Residuals: 
+##     Min       1Q   Median       3Q      Max  
+## -1.3049  -0.8246  -0.7660   1.4502   1.8708  
+## 
+## Coefficients:
+##                 Estimate Std. Error z value Pr(&gt;|z|)    
+## (Intercept)     -1.16720    0.11698  -9.978  &lt; 2e-16 ***
+## Total_minus_tip  0.03811    0.02181   1.747  0.08058 .  
+## Distance        -0.04601    0.03263  -1.410  0.15852    
+## Time             0.15864    0.09038   1.755  0.07920 .  
+## week_dayMon     -0.24762    0.19169  -1.292  0.19643    
+## week_daySat     -0.16441    0.12578  -1.307  0.19115    
+## week_daySun     -0.51006    0.15854  -3.217  0.00129 ** 
+## week_dayThu     -0.03786    0.14076  -0.269  0.78796    
+## week_dayTue      0.06346    0.15612   0.406  0.68439    
+## week_dayWed     -0.09111    0.13605  -0.670  0.50307    
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## (Dispersion parameter for binomial family taken to be 1)
+## 
+##     Null deviance: 3461.2  on 2924  degrees of freedom
+## Residual deviance: 3425.3  on 2915  degrees of freedom
+##   (46 observations deleted due to missingness)
+## AIC: 3445.3
+## 
+## Number of Fisher Scoring iterations: 4</code></pre>
+<p>Not impressive by any means. The only parameter that is statistically significant at 5% alpha is <code>week_daySun</code>, at 10% alpha - both <code>Total_minus_tip</code> and <code>Time</code> are statistically significant. The logistic regression coefficients give the change in the log odds of the outcome for a one unit increase in the predictor variable.</p>
+<ul>
+<li>For every one unit change in <code>Time</code> (measured in $ here), the log odds of being tipped (versus non-tipped) increases by 0.159.</li>
+<li>The indicator variables for <code>week_day</code> have a slightly different interpretation. For example, making Sunday trip, versus Friday trip, changes the log odds of receiving a tip by -0.51.</li>
+</ul>
+<p>We can use the confint function to obtain confidence intervals for the coefficient estimates. Note that for logistic models, confidence intervals are based on the profiled log-likelihood function.</p>
+<pre class="r"><code>confint(tippedLogitM)</code></pre>
+<pre><code>## Waiting for profiling to be done...</code></pre>
+<pre><code>##                        2.5 %      97.5 %
+## (Intercept)     -1.398259182 -0.93946899
+## Total_minus_tip -0.004913197  0.08097202
+## Distance        -0.110123189  0.01794849
+## Time            -0.018749012  0.33586885
+## week_dayMon     -0.631034468  0.12178051
+## week_daySat     -0.411438308  0.08183965
+## week_daySun     -0.825212488 -0.20304297
+## week_dayThu     -0.315220448  0.23691058
+## week_dayTue     -0.244992998  0.36752898
+## week_dayWed     -0.358974514  0.17466072</code></pre>
+<p>Clearly, the confidence intervals show that the reliability of our coefficinets isn’t high (except for Sunday trips). For example, real <code>Time</code> coefficient can be anywhere between -0.019 and 0.34. In other words, each eaxtra dollar in <code>Time</code> amount could either decrease or increase the chances of getting a tip. Not very useful. The Sunday trips are clearly decrease the chances of receiving a tip as both borders of the interval are below zero.</p>
+<p>We can try using a 90% confidence interval instead to get more reliable values for <code>Total_minus_tip</code> and <code>Time</code> variables (<code>Distance</code> still won’t be significant at 90%, though).</p>
+<pre class="r"><code>confint(tippedLogitM, level = 0.9)</code></pre>
+<pre><code>## Waiting for profiling to be done...</code></pre>
+<pre><code>##                          5 %         95 %
+## (Intercept)     -1.360856917 -0.975886668
+## Total_minus_tip  0.002065298  0.074048738
+## Distance        -0.099787465  0.007655336
+## Time             0.009825459  0.307342585
+## week_dayMon     -0.568262051  0.063165921
+## week_daySat     -0.371642063  0.042271011
+## week_daySun     -0.773906164 -0.251939986
+## week_dayThu     -0.270408388  0.192866519
+## week_dayTue     -0.195037051  0.318873122
+## week_dayWed     -0.315727989  0.132034374</code></pre>
+<p>We can also exponentiate the coefficients and interpret them as <strong>odds-ratios</strong>.</p>
+<pre class="r"><code>## odds ratios and 90% CI
+exp(cbind(OddsRatios = coef(tippedLogitM), confint(tippedLogitM, level = 0.9)))</code></pre>
+<pre><code>## Waiting for profiling to be done...</code></pre>
+<pre><code>##                 OddsRatios       5 %      95 %
+## (Intercept)      0.3112377 0.2564409 0.3768581
+## Total_minus_tip  1.0388487 1.0020674 1.0768593
+## Distance         0.9550290 0.9050297 1.0076847
+## Time             1.1719168 1.0098739 1.3598067
+## week_dayMon      0.7806570 0.5665091 1.0652036
+## week_daySat      0.8483902 0.6896010 1.0431772
+## week_daySun      0.6004579 0.4612080 0.7772914
+## week_dayThu      0.9628489 0.7630678 1.2127209
+## week_dayTue      1.0655176 0.8228042 1.3755768
+## week_dayWed      0.9129173 0.7292578 1.1411475</code></pre>
+<p>Here, instead of log odds we get the ‘normal’ odds like 4 to 1 or 1 to 1. So we can say for a one dollar increase in <code>Time</code> earnings, we expect to see about 17% increase in the odds of being tipped (odds are 1.17 to 1). This 17% of increase does not depend on the value that <code>Time</code> is held at.</p>
+</div>
+<div id="ml-modeling-with-h2o.ai-engine" class="section level2">
+<h2>ML modeling with H2O.ai engine</h2>
 <p>Now, let’s check out what <strong>machine learning</strong> can do with this data. We should start an H2O engine:</p>
-<p>Save dataframe as h2o object and split for training and testing datasets.</p>
+<p>Save dataframe as h2o object and split for training and testing datasets. We don’t creat a validation part here as our data set is quite small and we want to feed more data to the training model.</p>
 <pre class="r"><code>uberML_h2o &lt;- as.h2o(uberML)</code></pre>
 <pre><code>## 
   |                                                                            
@@ -780,6 +874,7 @@ summary(uberLM_)</code></pre>
   |                                                                            
   |======================================================================| 100%</code></pre>
 <pre class="r"><code>uberML_h2o[,1] = as.factor(uberML_h2o[,1])
+uberML_h2o[,4] = as.factor(uberML_h2o[,4])
 parts1 &lt;- h2o.splitFrame(uberML_h2o, 0.8)
 train1 &lt;- parts1[[1]]
 test1 &lt;- parts1[[2]]</code></pre>
@@ -789,57 +884,55 @@ test1 &lt;- parts1[[2]]</code></pre>
 <pre class="r"><code>aML_leaders &lt;- aML@leaderboard
 print(aML_leaders, n = nrow(aML_leaders))</code></pre>
 <pre><code>##                                               model_id mean_residual_deviance
-## 1                         GLM_1_AutoML_20200125_214115               2.711704
-## 2     StackedEnsemble_AllModels_AutoML_20200125_214115               2.734077
-## 3  StackedEnsemble_BestOfFamily_AutoML_20200125_214115               2.734502
-## 4                DeepLearning_1_AutoML_20200125_214115               2.738595
-## 5                         XRT_1_AutoML_20200125_214115               2.749103
-## 6                     XGBoost_3_AutoML_20200125_214115               2.749620
-## 7                         GBM_5_AutoML_20200125_214115               2.750536
-## 8       XGBoost_grid__1_AutoML_20200125_214115_model_2               2.760690
-## 9                         DRF_1_AutoML_20200125_214115               2.807629
-## 10      XGBoost_grid__1_AutoML_20200125_214115_model_1               2.818016
-## 11                        GBM_2_AutoML_20200125_214115               2.835111
-## 12                    XGBoost_2_AutoML_20200125_214115               2.842751
-## 13                    XGBoost_1_AutoML_20200125_214115               2.857798
-## 14                        GBM_3_AutoML_20200125_214115               2.886211
-## 15                        GBM_4_AutoML_20200125_214115               2.895661
-## 16                        GBM_1_AutoML_20200125_214115               2.984805
+## 1                         GLM_1_AutoML_20200128_145731               2.767581
+## 2                DeepLearning_1_AutoML_20200128_145731               2.784562
+## 3  StackedEnsemble_BestOfFamily_AutoML_20200128_145731               2.786541
+## 4     StackedEnsemble_AllModels_AutoML_20200128_145731               2.793330
+## 5                         GBM_5_AutoML_20200128_145731               2.797440
+## 6                     XGBoost_3_AutoML_20200128_145731               2.819883
+## 7       XGBoost_grid__1_AutoML_20200128_145731_model_1               2.820440
+## 8                         XRT_1_AutoML_20200128_145731               2.821129
+## 9                         DRF_1_AutoML_20200128_145731               2.831400
+## 10                        GBM_3_AutoML_20200128_145731               2.898498
+## 11                        GBM_2_AutoML_20200128_145731               2.898834
+## 12                    XGBoost_2_AutoML_20200128_145731               2.899285
+## 13                    XGBoost_1_AutoML_20200128_145731               2.945770
+## 14                        GBM_1_AutoML_20200128_145731               2.973103
+## 15                        GBM_4_AutoML_20200128_145731               2.979631
 ##        rmse      mse      mae     rmsle
-## 1  1.646725 2.711704 1.113449 0.6367975
-## 2  1.653505 2.734077 1.106725 0.6372665
-## 3  1.653633 2.734502 1.107180 0.6373924
-## 4  1.654870 2.738595 1.074819 0.6248465
-## 5  1.658042 2.749103 1.107413 0.6437304
-## 6  1.658198 2.749620 1.090809 0.6321991
-## 7  1.658474 2.750536 1.111091 0.6377861
-## 8  1.661532 2.760690 1.049466 0.6127231
-## 9  1.675598 2.807629 1.108014 0.6481915
-## 10 1.678695 2.818016 1.090941 0.6421082
-## 11 1.683779 2.835111 1.099130 0.6425989
-## 12 1.686046 2.842751 1.090426 0.6488456
-## 13 1.690502 2.857798 1.091506 0.6452585
-## 14 1.698885 2.886211 1.107189 0.6513527
-## 15 1.701664 2.895661 1.106784 0.6557601
-## 16 1.727659 2.984805 1.119916 0.6517657
+## 1  1.663605 2.767581 1.139188 0.6444964
+## 2  1.668701 2.784562 1.124547 0.6437650
+## 3  1.669293 2.786541 1.135610 0.6445315
+## 4  1.671326 2.793330 1.136309 0.6449753
+## 5  1.672555 2.797440 1.129098 0.6434380
+## 6  1.679251 2.819883 1.120369 0.6402539
+## 7  1.679416 2.820440 1.085381 0.6290984
+## 8  1.679622 2.821129 1.128512 0.6482607
+## 9  1.682676 2.831400 1.129600 0.6510066
+## 10 1.702497 2.898498 1.131888 0.6561227
+## 11 1.702596 2.898834 1.130119 0.6536250
+## 12 1.702729 2.899285 1.123110 0.6574152
+## 13 1.716325 2.945770 1.125169 0.6540243
+## 14 1.724269 2.973103 1.139775 0.6535054
+## 15 1.726161 2.979631 1.142857 0.6687059
 ## 
-## [16 rows x 6 columns]</code></pre>
+## [15 rows x 6 columns]</code></pre>
 <pre class="r"><code>aML_leader1 &lt;- aML@leader
 perf &lt;- h2o.performance(aML_leader1, test1)
 perf</code></pre>
 <pre><code>## H2ORegressionMetrics: glm
 ## 
-## MSE:  2.55655
-## RMSE:  1.598922
-## MAE:  1.1454
-## RMSLE:  0.6425345
-## Mean Residual Deviance :  2.55655
-## R^2 :  0.07150215
-## Null Deviance :1667.442
-## Null D.o.F. :604
-## Residual Deviance :1546.713
-## Residual D.o.F. :600
-## AIC :2296.804</code></pre>
+## MSE:  2.352762
+## RMSE:  1.533872
+## MAE:  1.081666
+## RMSLE:  0.6272792
+## Mean Residual Deviance :  2.352762
+## R^2 :  0.05421924
+## Null Deviance :1556.474
+## Null D.o.F. :623
+## Residual Deviance :1468.124
+## Residual D.o.F. :612
+## AIC :2330.724</code></pre>
 <p>No surprise, the best performing model for the split is GLM (Generalized Linear Model). AutoML doesn’t show us the adjusted R^2 value for the model for us to directly compare it to the linear regression model we had before. However, <em>NOTE: Chances are high that a leading algorithm would be different for a different split.</em></p>
 <p>If the leading model is GLM, we can check coefficients for the actual model:</p>
 <pre class="r"><code>#h2o.coef(aML_leader1)</code></pre>
@@ -847,81 +940,311 @@ perf</code></pre>
 <pre class="r"><code>tipped_aML_leaders &lt;- tipped_aML@leaderboard
 print(tipped_aML_leaders, n = nrow(tipped_aML_leaders))</code></pre>
 <pre><code>##                                               model_id       auc   logloss
-## 1                         GBM_2_AutoML_20200125_214157 0.5542726 0.5936458
-## 2                         GBM_4_AutoML_20200125_214157 0.5511295 0.6075263
-## 3                         GLM_1_AutoML_20200125_214157 0.5494821 0.5941720
-## 4                         DRF_1_AutoML_20200125_214157 0.5478633 0.6628980
-## 5                     XGBoost_3_AutoML_20200125_214157 0.5475289 0.5891581
-## 6                         XRT_1_AutoML_20200125_214157 0.5473322 0.6725701
-## 7                         GBM_1_AutoML_20200125_214157 0.5422271 0.5941772
-## 8                         GBM_3_AutoML_20200125_214157 0.5397045 0.6015117
-## 9  StackedEnsemble_BestOfFamily_AutoML_20200125_214157 0.5372659 0.5883382
-## 10               DeepLearning_1_AutoML_20200125_214157 0.5367630 0.5951904
-## 11                    XGBoost_1_AutoML_20200125_214157 0.5366296 0.5977660
-## 12                    XGBoost_2_AutoML_20200125_214157 0.5363450 0.5945459
-## 13    StackedEnsemble_AllModels_AutoML_20200125_214157 0.5344291 0.5880808
-## 14                        GBM_5_AutoML_20200125_214157 0.5283366 0.5971193
-## 15      XGBoost_grid__1_AutoML_20200125_214157_model_1 0.5276480 0.6101996
+## 1                         GLM_1_AutoML_20200128_145814 0.5540270 0.6010820
+## 2                         GBM_1_AutoML_20200128_145814 0.5430227 0.5960138
+## 3                         DRF_1_AutoML_20200128_145814 0.5412857 0.6392399
+## 4                         GBM_4_AutoML_20200128_145814 0.5357000 0.6108707
+## 5  StackedEnsemble_BestOfFamily_AutoML_20200128_145814 0.5328226 0.5927069
+## 6     StackedEnsemble_AllModels_AutoML_20200128_145814 0.5328226 0.5927069
+## 7                     XGBoost_3_AutoML_20200128_145814 0.5291765 0.5935797
+## 8                         GBM_3_AutoML_20200128_145814 0.5283159 0.6074595
+## 9                     XGBoost_2_AutoML_20200128_145814 0.5208059 0.6010135
+## 10                        GBM_2_AutoML_20200128_145814 0.5190456 0.6052544
+## 11                    XGBoost_1_AutoML_20200128_145814 0.5178408 0.6048522
 ##        aucpr mean_per_class_error      rmse       mse
-## 1  0.3534460            0.4849567 0.4488769 0.2014904
-## 2  0.3495741            0.4910272 0.4542742 0.2063651
-## 3  0.3186192            0.4997052 0.4497197 0.2022478
-## 4  0.3621548            0.4975033 0.4681479 0.2191625
-## 5  0.3488350            0.4959096 0.4471004 0.1998988
-## 6  0.3578700            0.5000000 0.4657846 0.2169553
-## 7  0.3555368            0.4933117 0.4490540 0.2016495
-## 8  0.3480430            0.4944725 0.4520189 0.2043211
-## 9  0.3533434            0.4992722 0.4464152 0.1992865
-## 10 0.3594743            0.5000000 0.4488091 0.2014296
-## 11 0.3389554            0.4924828 0.4510931 0.2034850
-## 12 0.3365120            0.4997052 0.4495388 0.2020852
-## 13 0.3555156            0.4988392 0.4462672 0.1991544
-## 14 0.3046124            0.4985259 0.4510201 0.2034191
-## 15 0.3328628            0.4966189 0.4575538 0.2093555
+## 1  0.3381157            0.4979665 0.4533552 0.2055309
+## 2  0.3889703            0.4916917 0.4503917 0.2028527
+## 3  0.3806007            0.4963093 0.4660077 0.2171632
+## 4  0.3680843            0.4937497 0.4564339 0.2083319
+## 5  0.3833789            0.4938001 0.4486984 0.2013302
+## 6  0.3833789            0.4938001 0.4486984 0.2013302
+## 7  0.3635173            0.4938001 0.4497225 0.2022504
+## 8  0.3716088            0.4971133 0.4547983 0.2068415
+## 9  0.3635273            0.4976653 0.4527421 0.2049754
+## 10 0.3688319            0.4910130 0.4542838 0.2063738
+## 11 0.3657791            0.4987448 0.4546143 0.2066742
 ## 
-## [15 rows x 7 columns]</code></pre>
+## [11 rows x 7 columns]</code></pre>
 <pre class="r"><code>tipped_aML_leader1 &lt;- tipped_aML@leader
 h2o.performance(tipped_aML_leader1, test1)</code></pre>
-<pre><code>## H2OBinomialMetrics: gbm
+<pre><code>## H2OBinomialMetrics: glm
 ## 
-## MSE:  0.2052225
-## RMSE:  0.4530149
-## LogLoss:  0.6011398
-## Mean Per-Class Error:  0.4842986
-## AUC:  0.5692921
-## AUCPR:  0.3496301
-## Gini:  0.1385843
-## R^2:  0.03324872
+## MSE:  0.1965315
+## RMSE:  0.4433187
+## LogLoss:  0.5819908
+## Mean Per-Class Error:  0.4946742
+## AUC:  0.5414709
+## AUCPR:  0.3038069
+## Gini:  0.08294173
+## R^2:  0.001088221
+## Residual Deviance:  726.3245
+## AIC:  750.3245
 ## 
 ## Confusion Matrix (vertical: actual; across: predicted) for F1-optimal threshold:
-##        no yes    Error      Rate
-## no     20 400 0.952381  =400/420
-## yes     3 182 0.016216    =3/185
-## Totals 23 582 0.666116  =403/605
+##         0   1    Error      Rate
+## 0      13 443 0.971491  =443/456
+## 1       3 165 0.017857    =3/168
+## Totals 16 608 0.714744  =446/624
 ## 
 ## Maximum Metrics: Maximum metrics at their respective thresholds
 ##                         metric threshold      value idx
-## 1                       max f1  0.147760   0.474576 378
-## 2                       max f2  0.110761   0.689270 396
-## 3                 max f0point5  0.267946   0.400139 207
-## 4                 max accuracy  0.582740   0.715702   1
-## 5                max precision  0.890569   1.000000   0
-## 6                   max recall  0.110761   1.000000 396
-## 7              max specificity  0.890569   1.000000   0
-## 8             max absolute_mcc  0.582740   0.223280   1
-## 9   max min_per_class_accuracy  0.272267   0.552381 195
-## 10 max mean_per_class_accuracy  0.267946   0.575097 207
-## 11                     max tns  0.890569 420.000000   0
-## 12                     max fns  0.890569 173.000000   0
-## 13                     max fps  0.090378 420.000000 399
-## 14                     max tps  0.110761 185.000000 396
-## 15                     max tnr  0.890569   1.000000   0
-## 16                     max fnr  0.890569   0.935135   0
-## 17                     max fpr  0.090378   1.000000 399
-## 18                     max tpr  0.110761   1.000000 396
+## 1                       max f1  0.221578   0.425258 384
+## 2                       max f2  0.193458   0.648148 399
+## 3                 max f0point5  0.281575   0.334596 217
+## 4                 max accuracy  0.452486   0.733974   1
+## 5                max precision  0.460555   1.000000   0
+## 6                   max recall  0.193458   1.000000 399
+## 7              max specificity  0.460555   1.000000   0
+## 8             max absolute_mcc  0.452486   0.093422   1
+## 9   max min_per_class_accuracy  0.288839   0.535714 193
+## 10 max mean_per_class_accuracy  0.281575   0.543546 217
+## 11                     max tns  0.460555 456.000000   0
+## 12                     max fns  0.460555 167.000000   0
+## 13                     max fps  0.206633 456.000000 397
+## 14                     max tps  0.193458 168.000000 399
+## 15                     max tnr  0.460555   1.000000   0
+## 16                     max fnr  0.460555   0.994048   0
+## 17                     max fpr  0.206633   1.000000 397
+## 18                     max tpr  0.193458   1.000000 399
 ## 
 ## Gains/Lift Table: Extract with `h2o.gainsLift(&lt;model&gt;, &lt;data&gt;)` or `h2o.gainsLift(&lt;model&gt;, valid=&lt;T/F&gt;, xval=&lt;T/F&gt;)`</code></pre>
-<p>We ended up with the XGBoost model here. It showed pretty bad performance, though. The AUC parameter (area under the curve) is only 54%, which is only 4% higher than the benchmark.</p>
+<p>We ended up with the XGBoost (Extreme Gradient Boosting) model here. It showed pretty bad performance, though. The AUC parameter (area under the curve) is only 54%, which is only 4% higher than the benchmark. We should experiment with XGBoost by tweaking its parameters.</p>
+<p>Let’s split the data in 3 parts first.</p>
+<pre class="r"><code>partsXGB &lt;- h2o.splitFrame(uberML_h2o, ratios = c(0.6, 0.2))
+trainXGB &lt;- partsXGB[[1]]
+validXGB &lt;- partsXGB[[2]]
+testXGB &lt;- partsXGB[[3]]</code></pre>
+<pre class="r"><code>tippedXGB &lt;- h2o.xgboost(4:14, 1, 
+                         training_frame = trainXGB, 
+                         validation_frame = validXGB,
+                         model_id = 'tippedXGB', 
+                         stopping_rounds = 3, # stops if not improved for x number of last trees
+                         stopping_metric = 'mean_per_class_error',
+                         seed = 1234, 
+                         ntrees = 100, 
+                         max_depth = 200,
+                         sample_rate = 0.69, ## use a random % of the rows to fit each tree (like in random forest)
+                         col_sample_rate = 0.6, ## use a random % of the columns
+                         
+                         )</code></pre>
+<pre><code>## Warning in .h2o.startModelJob(algo, params, h2oRestApiVersion): Dropping bad and constant columns: [Cancellation, trip_start, Base Fare].</code></pre>
+<pre><code>## 
+  |                                                                            
+  |                                                                      |   0%
+  |                                                                            
+  |=====                                                                 |   7%
+  |                                                                            
+  |======================================================================| 100%</code></pre>
+<pre class="r"><code>summary(tippedXGB)</code></pre>
+<pre><code>## Model Details:
+## ==============
+## 
+## H2OBinomialModel: xgboost
+## Model Key:  tippedXGB 
+## Model Summary: 
+##   number_of_trees
+## 1               9
+## 
+## H2OBinomialMetrics: xgboost
+## ** Reported on training data. **
+## 
+## MSE:  0.09730684
+## RMSE:  0.3119404
+## LogLoss:  0.3418862
+## Mean Per-Class Error:  0.09557973
+## AUC:  0.9686784
+## AUCPR:  0.890761
+## Gini:  0.9373568
+## R^2:  0.5288697
+## 
+## Confusion Matrix (vertical: actual; across: predicted) for F1-optimal threshold:
+##           0   1    Error       Rate
+## 0      1186  85 0.066876   =85/1271
+## 1        65 458 0.124283    =65/523
+## Totals 1251 543 0.083612  =150/1794
+## 
+## Maximum Metrics: Maximum metrics at their respective thresholds
+##                         metric threshold       value idx
+## 1                       max f1  0.375680    0.859287 187
+## 2                       max f2  0.288527    0.885806 230
+## 3                 max f0point5  0.472872    0.902680 143
+## 4                 max accuracy  0.427230    0.919732 165
+## 5                max precision  0.926188    1.000000   0
+## 6                   max recall  0.142720    1.000000 331
+## 7              max specificity  0.926188    1.000000   0
+## 8             max absolute_mcc  0.427230    0.801863 165
+## 9   max min_per_class_accuracy  0.343130    0.895358 202
+## 10 max mean_per_class_accuracy  0.375680    0.904420 187
+## 11                     max tns  0.926188 1271.000000   0
+## 12                     max fns  0.926188  500.000000   0
+## 13                     max fps  0.045081 1271.000000 399
+## 14                     max tps  0.142720  523.000000 331
+## 15                     max tnr  0.926188    1.000000   0
+## 16                     max fnr  0.926188    0.956023   0
+## 17                     max fpr  0.045081    1.000000 399
+## 18                     max tpr  0.142720    1.000000 331
+## 
+## Gains/Lift Table: Extract with `h2o.gainsLift(&lt;model&gt;, &lt;data&gt;)` or `h2o.gainsLift(&lt;model&gt;, valid=&lt;T/F&gt;, xval=&lt;T/F&gt;)`
+## H2OBinomialMetrics: xgboost
+## ** Reported on validation data. **
+## 
+## MSE:  0.216367
+## RMSE:  0.4651527
+## LogLoss:  0.6302947
+## Mean Per-Class Error:  0.4759036
+## AUC:  0.5612861
+## AUCPR:  0.3345487
+## Gini:  0.1225722
+## R^2:  -0.06019852
+## 
+## Confusion Matrix (vertical: actual; across: predicted) for F1-optimal threshold:
+##         0   1    Error      Rate
+## 0      30 385 0.927711  =385/415
+## 1       4 162 0.024096    =4/166
+## Totals 34 547 0.669535  =389/581
+## 
+## Maximum Metrics: Maximum metrics at their respective thresholds
+##                         metric threshold      value idx
+## 1                       max f1  0.103073   0.454418 373
+## 2                       max f2  0.073430   0.669895 393
+## 3                 max f0point5  0.404856   0.368217 121
+## 4                 max accuracy  0.902056   0.728055   1
+## 5                max precision  0.902056   0.900000   1
+## 6                   max recall  0.073430   1.000000 393
+## 7              max specificity  0.926188   0.997590   0
+## 8             max absolute_mcc  0.902056   0.179949   1
+## 9   max min_per_class_accuracy  0.266703   0.518072 217
+## 10 max mean_per_class_accuracy  0.404856   0.557229 121
+## 11                     max tns  0.926188 414.000000   0
+## 12                     max fns  0.926188 158.000000   0
+## 13                     max fps  0.051468 415.000000 399
+## 14                     max tps  0.073430 166.000000 393
+## 15                     max tnr  0.926188   0.997590   0
+## 16                     max fnr  0.926188   0.951807   0
+## 17                     max fpr  0.051468   1.000000 399
+## 18                     max tpr  0.073430   1.000000 393
+## 
+## Gains/Lift Table: Extract with `h2o.gainsLift(&lt;model&gt;, &lt;data&gt;)` or `h2o.gainsLift(&lt;model&gt;, valid=&lt;T/F&gt;, xval=&lt;T/F&gt;)`
+## 
+## 
+## Scoring History: 
+##              timestamp   duration number_of_trees training_rmse
+## 1  2020-01-28 14:58:56  0.052 sec               0       0.50000
+## 2  2020-01-28 14:58:56  0.433 sec               1       0.45500
+## 3  2020-01-28 14:58:57  0.714 sec               2       0.42537
+## 4  2020-01-28 14:58:57  0.848 sec               3       0.40000
+## 5  2020-01-28 14:58:57  0.905 sec               4       0.37766
+## 6  2020-01-28 14:58:57  1.150 sec               5       0.36130
+## 7  2020-01-28 14:58:57  1.193 sec               6       0.34802
+## 8  2020-01-28 14:58:57  1.244 sec               7       0.33508
+## 9  2020-01-28 14:58:57  1.288 sec               8       0.32317
+## 10 2020-01-28 14:58:57  1.392 sec               9       0.31194
+##    training_logloss training_auc training_pr_auc training_lift
+## 1           0.69315      0.50000         0.00000       1.00000
+## 2           0.60609      0.74542         0.56237       3.43021
+## 3           0.55021      0.81294         0.64820       3.43021
+## 4           0.50264      0.87059         0.72521       3.43021
+## 5           0.46109      0.90794         0.78225       3.43021
+## 6           0.43056      0.92519         0.81146       3.43021
+## 7           0.40500      0.93659         0.82892       3.43021
+## 8           0.38208      0.94878         0.85385       3.43021
+## 9           0.36136      0.95900         0.87370       3.43021
+## 10          0.34189      0.96868         0.89076       3.43021
+##    training_classification_error validation_rmse validation_logloss
+## 1                        0.70847         0.50000            0.69315
+## 2                        0.24303         0.47256            0.63906
+## 3                        0.21739         0.45903            0.61228
+## 4                        0.18116         0.45521            0.60456
+## 5                        0.15942         0.45503            0.60356
+## 6                        0.12040         0.45532            0.60365
+## 7                        0.11594         0.45615            0.60682
+## 8                        0.09532         0.45881            0.61319
+## 9                        0.09476         0.46342            0.62472
+## 10                       0.08361         0.46515            0.63029
+##    validation_auc validation_pr_auc validation_lift
+## 1         0.50000           0.00000         1.00000
+## 2         0.57458           0.35385         3.15000
+## 3         0.58513           0.36936         3.15000
+## 4         0.56932           0.36737         3.15000
+## 5         0.57646           0.35646         3.15000
+## 6         0.57636           0.35503         3.15000
+## 7         0.57749           0.35120         3.15000
+## 8         0.57211           0.33755         3.15000
+## 9         0.55891           0.33695         3.11111
+## 10        0.56129           0.33455         3.11111
+##    validation_classification_error
+## 1                          0.71429
+## 2                          0.71429
+## 3                          0.64200
+## 4                          0.70224
+## 5                          0.62306
+## 6                          0.59897
+## 7                          0.63167
+## 8                          0.64544
+## 9                          0.66093
+## 10                         0.66954
+## 
+## Variable Importances: (Extract with `h2o.varimp`) 
+## =================================================
+## 
+## Variable Importances: 
+##             variable relative_importance scaled_importance percentage
+## 1           Distance          400.477020          1.000000   0.223996
+## 2               Time          397.852173          0.993446   0.222528
+## 3    Total_minus_tip          381.115448          0.951654   0.213167
+## 4      DiamondReward          127.125916          0.317436   0.071105
+## 5  MinFareSupplement          118.879395          0.296844   0.066492
+## 6           WaitTime          112.220421          0.280217   0.062768
+## 7              Surge           68.437149          0.170889   0.038279
+## 8       week_day.Fri           46.272224          0.115543   0.025881
+## 9       week_day.Sat           38.273396          0.095570   0.021407
+## 10      week_day.Wed           27.605930          0.068933   0.015441
+## 11      week_day.Thu           25.908997          0.064695   0.014492
+## 12      week_day.Tue           23.435371          0.058519   0.013108
+## 13      week_day.Sun           11.479535          0.028665   0.006421
+## 14      week_day.Mon            8.790125          0.021949   0.004917</code></pre>
+<pre class="r"><code>#h2o.performance(tippedXGB, validXGB)
+h2o.performance(tippedXGB, testXGB)</code></pre>
+<pre><code>## H2OBinomialMetrics: xgboost
+## 
+## MSE:  0.2196988
+## RMSE:  0.4687204
+## LogLoss:  0.6362795
+## Mean Per-Class Error:  0.4785374
+## AUC:  0.5450897
+## AUCPR:  0.2986258
+## Gini:  0.09017932
+## R^2:  -0.09331076
+## 
+## Confusion Matrix (vertical: actual; across: predicted) for F1-optimal threshold:
+##         0   1    Error      Rate
+## 0      34 396 0.920930  =396/430
+## 1       6 160 0.036145    =6/166
+## Totals 40 556 0.674497  =402/596
+## 
+## Maximum Metrics: Maximum metrics at their respective thresholds
+##                         metric threshold      value idx
+## 1                       max f1  0.102540   0.443213 375
+## 2                       max f2  0.074575   0.664532 390
+## 3                 max f0point5  0.285127   0.364188 212
+## 4                 max accuracy  0.926188   0.733221   0
+## 5                max precision  0.926188   1.000000   0
+## 6                   max recall  0.074575   1.000000 390
+## 7              max specificity  0.926188   1.000000   0
+## 8             max absolute_mcc  0.926188   0.175457   0
+## 9   max min_per_class_accuracy  0.290362   0.560241 209
+## 10 max mean_per_class_accuracy  0.285127   0.565901 212
+## 11                     max tns  0.926188 430.000000   0
+## 12                     max fns  0.926188 159.000000   0
+## 13                     max fps  0.058991 430.000000 399
+## 14                     max tps  0.074575 166.000000 390
+## 15                     max tnr  0.926188   1.000000   0
+## 16                     max fnr  0.926188   0.957831   0
+## 17                     max fpr  0.058991   1.000000 399
+## 18                     max tpr  0.074575   1.000000 390
+## 
+## Gains/Lift Table: Extract with `h2o.gainsLift(&lt;model&gt;, &lt;data&gt;)` or `h2o.gainsLift(&lt;model&gt;, valid=&lt;T/F&gt;, xval=&lt;T/F&gt;)`</code></pre>
+<p>After numerous experiments with different parameters, we could not come up with the model that is better than one provided by AutoML. On diiferent settings, we got the recall rate of around 19% and the AUC around 59% for validation dataset. Those values dropped significantly on the test set.</p>
 <div id="conclusion-draft" class="section level3">
 <h3>Conclusion DRAFT</h3>
 <p>It’s pretty clear that we cannot make predictions on the tipping size and/or frequency based on the data Uber provides to its drivers. That would be interesting to check if pick-up/drop-off location impacts tipping but we don’t have these data now. Also, we can try including time of the day in the model. There is a widespread belief that people tip more during the late night trips. We doubt this, but it would be interesting to find out.</p>
