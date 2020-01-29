@@ -20,6 +20,10 @@ In National Tipping Field Experiment, Chandar, et al. (2019) report that “ride
 
 # Machine Learning modeling with H2O.ai engine
 
+After numerous experiments with different XGBoost parameters, we could not come up with the model that is better than one provided by AutoML. On diiferent settings, we got the recall rate of around 19% and the AUC around 59% for validation dataset. Those values dropped significantly on the test set.
+
+### Preliminary conclusion
+
 It's pretty clear that we cannot make predictions on the tipping size and/or frequency based on the data Uber provides to its drivers. That would be interesting to check if pick-up/drop-off location impacts tipping but we don't have these data now. Also, we can try including time of the day in the model. There is a widespread belief that people tip more during the late night trips. We doubt this, but it would be interesting to find out.
   
 [See an HTML version of the research here](http://vkjet.github.io/UBER/uber.html)
