@@ -135,7 +135,7 @@ Check summary statistics and parameter distributions.
 # Summary stats for Tip variable
 uber_trips_clean %>% 
   filter(!is.na(Tip)) %>%
-  summarise(trips_w_tips = n(), tip_mean = mean(as.numeric(Tip,  na.rm = TRUE)), tip_min = min(as.numeric(Tip)), tip_max = max(as.numeric(Tip,  na.rm = TRUE)), tip_sd = sd(as.numeric(Tip))) %>%
+  summarise(trips_w_tips = n(), tip_mean = mean(as.numeric(Tip), na.rm = TRUE), tip_min = min(as.numeric(Tip)), tip_max = max(as.numeric(Tip), na.rm = TRUE), tip_sd = sd(as.numeric(Tip))) %>%
   show()
 
 uber_trips_clean %>%
@@ -455,7 +455,6 @@ uberML <- uber_trips_clean %>%
   select(tipped, Tip, date, week_day, Total_minus_tip, trip_start, everything()) %>%
   select(1:24)
 
-
 uberLM <- lm(Tip ~ Total_minus_tip, data=uberML)
 
 summary(uberLM)  
@@ -468,15 +467,27 @@ Looks like total fare amount (excluding tip) can only explain less than 5% (`r u
 
 Residuals distribution looks pretty random, which is good. 
 
+We can try categorizing the starting time of the trip variable (`trip_start`) to see if the time of the day makes any difference in the context of tipping. 
+
+```{r}
+uberML <- uberML %>%
+  mutate(day_time = ifelse(trip_start >= 5 & trip_start < 12, "morning",
+                           ifelse(trip_start >= 12 & trip_start < 18, "afternoon",
+                                  ifelse(trip_start >= 18 & trip_start < 23, "evening",
+                                        "night")))) %>%
+  select(1:3, trip_start, day_time, everything()) 
+```
+
+
 Let's try adding other variables to the model. 
 
 ```{r}
-uberLM_ <- lm(Tip ~ Total_minus_tip + Distance + Time, data=uberML)
+uberLM_ <- lm(Tip ~ Total_minus_tip + Distance + Time + day_time + week_day, data=uberML)
 
 summary(uberLM_)
 ```
 
-The adjusted R^2 slightly increased to almost 6% which is still super low. Good to know that all `Total_minus_tip`, `Distance`, and `Time` are valuable at 5% alpha. The `weekday` variable adds no explanatory power to this multiple linear regression model. Later, we can try categorizing the starting time of the trip variable (`trip_start`) to see if the time of the day makes any difference in the context of tipping.
+The adjusted R^2 slightly increased to a little bit over 6% which is still super low. Good to know that all `Total_minus_tip`, `Distance`, and `Time` are valuable at 5% alpha. It looks like the only `week_day` that adds some explanatory power to this multiple linear regression model is Sunday. And `day_time` is not significant at 5% alpha.
 
 ## Logistic regression
 
@@ -485,15 +496,15 @@ The code below estimates a **logistic regression model** using the glm (generali
 ```{r}
 uberML[,1] = as.factor(uberML[,1])
 
-tippedLogitM <- glm(tipped ~ Total_minus_tip + Distance + Time + week_day, data = uberML, family = 'binomial')
+tippedLogitM <- glm(tipped ~ Total_minus_tip + Distance + Time + week_day + day_time, data = uberML, family = 'binomial')
 
 summary(tippedLogitM)
 ```
 
-Not impressive by any means. The only parameter that is statistically significant at 5% alpha is `week_daySun`, at 10% alpha - both `Total_minus_tip` and `Time` are statistically significant. The logistic regression coefficients give the change in the log odds of the outcome for a one unit increase in the predictor variable.
+Not impressive by any means. Two parameters that are statistically significant at 5% alpha are `week_daySun` and `Total_minus_tip`, at 10% alpha - we add 'night' as a statistically significant feature. The logistic regression coefficients give the change in the log odds of the outcome for a one unit increase in the predictor variable.
 
-- For every one unit change in `Time` (measured in $ here), the log odds of being tipped (versus non-tipped) increases by 0.159.
-- The indicator variables for `week_day` have a slightly different interpretation. For example, making Sunday trip, versus Friday trip, changes the log odds of receiving a tip by -0.51.
+- For every one unit change in `Time` (measured in $ here), the log odds of being tipped (versus non-tipped) increases by 0.134.
+- The indicator variables for `week_day` have a slightly different interpretation. For example, making Sunday trip, versus Friday trip, changes the log odds of receiving a tip by -0.56.
 
 We can use the confint function to obtain confidence intervals for the coefficient estimates. Note that for logistic models, confidence intervals are based on the profiled log-likelihood function. 
 
@@ -501,7 +512,7 @@ We can use the confint function to obtain confidence intervals for the coefficie
 confint(tippedLogitM)
 ```
 
-Clearly, the confidence intervals show that the reliability of our coefficinets isn't high (except for Sunday trips). For example, real `Time` coefficient can be anywhere between -0.019 and 0.34. In other words, each eaxtra dollar in `Time` amount could either decrease or increase the chances of getting a tip. Not very useful. The Sunday trips are clearly decrease the chances of receiving a tip as both borders of the interval are below zero. 
+Clearly, the confidence intervals show that the reliability of our coefficinets isn't high (except for Sunday trips). For example, real `Time` coefficient can be anywhere between -0.045 and 0.31. In other words, each extra dollar in `Time` amount could either decrease or increase the chances of getting a tip. Not very useful. The Sunday trips are clearly decrease the chances of receiving a tip as both borders of the interval are below zero. 
 
 We can try using a 90% confidence interval instead to get more reliable values for `Total_minus_tip` and `Time` variables (`Distance` still won't be significant at 90%, though).
 
@@ -509,6 +520,7 @@ We can try using a 90% confidence interval instead to get more reliable values f
 confint(tippedLogitM, level = 0.9)
 ```
 
+Not a great improvement, obviously. We only have 'night' as an additional feature. Basically, people don't tip more during the nights in contrast to a popular believe. 
 
 We can also exponentiate the coefficients and interpret them as **odds-ratios**.
 
@@ -517,7 +529,7 @@ We can also exponentiate the coefficients and interpret them as **odds-ratios**.
 exp(cbind(OddsRatios = coef(tippedLogitM), confint(tippedLogitM, level = 0.9)))
 ```
 
-Here, instead of log odds we get the 'normal' odds like 4 to 1 or 1 to 1. So we can say for a one dollar increase in `Time` earnings, we expect to see about 17% increase in the odds of being tipped (odds are 1.17 to 1). This 17% of increase does not depend on the value that `Time` is held at. 
+Here, instead of log odds we get the 'normal' odds like 4 to 1 or 1 to 1. So we can say for a one dollar increase in `Time` earnings, we expect to see about 14% increase in the odds of being tipped (odds are 1.14 to 1). This 14% of increase does not depend on the value that `Time` is held at. 
 
 ## ML modeling with H2O.ai engine
 
@@ -533,7 +545,8 @@ Save dataframe as h2o object and split for training and testing datasets. We don
 ```{r}
 uberML_h2o <- as.h2o(uberML)
 uberML_h2o[,1] = as.factor(uberML_h2o[,1])
-uberML_h2o[,4] = as.factor(uberML_h2o[,4])
+uberML_h2o[,5] = as.factor(uberML_h2o[,5])
+uberML_h2o[,6] = as.factor(uberML_h2o[,6])
 parts1 <- h2o.splitFrame(uberML_h2o, 0.8)
 train1 <- parts1[[1]]
 test1 <- parts1[[2]]
@@ -580,7 +593,7 @@ h2o.performance(tipped_aML_leader1, test1)
 
 ```
 
-We ended up with the XGBoost (Extreme Gradient Boosting) model here. It showed pretty bad performance, though. The AUC parameter (area under the curve) is only 54%, which is only 4% higher than the benchmark. We should experiment with XGBoost by tweaking its parameters.
+We ended up with the XGBoost (Extreme Gradient Boosting) model here. It showed pretty bad performance, though. The AUC parameter (area under the curve) is only 54%, which is only 4% higher than the benchmark (or basically just random guessing). We should experiment with XGBoost by tweaking its parameters.
 
 Let's split the data in 3 parts first.
 ```{r}
@@ -592,7 +605,7 @@ testXGB <- partsXGB[[3]]
 
 
 ```{r}
-tippedXGB <- h2o.xgboost(4:14, 1, 
+tippedXGB <- h2o.xgboost(4:15, 1, 
                          training_frame = trainXGB, 
                          validation_frame = validXGB,
                          model_id = 'tippedXGB', 
@@ -612,6 +625,22 @@ h2o.performance(tippedXGB, testXGB)
 
 After numerous experiments with different parameters, we could not come up with the model that is better than one provided by AutoML. On diiferent settings, we got the recall rate of around 19% and the AUC around 59% for validation dataset. Those values dropped significantly on the test set. 
 
-### Conclusion               DRAFT
+### ML Conclusion               DRAFT
 
 It's pretty clear that we cannot make predictions on the tipping size and/or frequency based on the data Uber provides to its drivers. That would be interesting to check if pick-up/drop-off location impacts tipping but we don't have these data now. Also, we can try including time of the day in the model. There is a widespread belief that people tip more during the late night trips. We doubt this, but it would be interesting to find out.
+
+
+## Using Bernouli or Poisson Distribution for Tipping Frequency Prediction
+
+Here's the idea: our previous research showed that we can predict neither tipping frequency nor tip size for Uber rides only based on data Uber shares with its drivers. However, it looks like tipping behaviour might share some of the typical charachteristics of Poisson distribution: 
+- the number of occurences in any two disjoint intervals of time are independent
+- the probability of two or more occurences at the same time is small
+- the average rate at which events occur is constant (*need to double-check this*)
+- the actual probability distribution is given by a binomial distribution and the number of trials is sufficiently bigger than the number of successes one is asking about.
+
+In our earlier analysis, we calculated the mean frequency of tipping as 0.2877819. This is our lambda.
+
+```{r}
+rpois(3, lambda = 0.2877819)
+```
+
